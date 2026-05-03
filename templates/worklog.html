@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Work Log — AczWiki{% endblock %}
+{% block content %}
+<div style="display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap">
+
+  <!-- Sidebar: past entries -->
+  <div style="min-width:200px;max-width:220px;flex-shrink:0">
+    <h4 style="margin-top:0">📅 Past Entries</h4>
+    {% if all_entries %}
+    <ul style="list-style:none;padding:0;margin:0">
+      {% for e in all_entries %}
+      <li style="margin-bottom:0.3rem">
+        <a href="?date={{ e.date }}" style="font-size:0.88rem;{% if e.date == selected_date %}font-weight:bold{% endif %}">
+          {{ e.date }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+      <p style="font-size:0.85rem;color:var(--pico-muted-color)">No entries yet.</p>
+    {% endif %}
+  </div>
+
+  <!-- Main content -->
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.2rem">
+      <h2 style="margin:0">📝 Work Log</h2>
+      {% if session.role == 'Admin' %}
+      <form action="" method="get" style="display:flex;gap:0.5rem;align-items:center;margin:0;flex-wrap:wrap">
+        <select name="user_id" style="font-size:0.85rem;margin:0">
+          <option value="">All Users</option>
+          {% for u in all_users %}
+            <option value="{{ u.id }}" {% if u.id|string == filter_user_id %}selected{% endif %}>{{ u.username }}</option>
+          {% endfor %}
+        </select>
+        <input type="date" name="date" value="{{ selected_date }}" style="font-size:0.85rem;margin:0">
+        <button type="submit" class="outline" style="margin:0;font-size:0.85rem">Filter</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <!-- New entry form -->
+    <article>
+      <h3 style="margin-top:0">➕ New Entry</h3>
+      <form method="post">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <label>Date
+            <input type="date" name="date" value="{{ today }}" required>
+          </label>
+          <div></div>
+        </div>
+        <label>Work Done <span style="color:#dc3545">*</span>
+          <textarea name="work_done" rows="4" required placeholder="What did you work on today?"></textarea>
+        </label>
+        <label>Blockers <small style="color:var(--pico-muted-color)">(optional)</small>
+          <textarea name="blockers" rows="2" placeholder="Any blockers or issues?"></textarea>
+        </label>
+        <label>Remarks <small style="color:var(--pico-muted-color)">(optional)</small>
+          <textarea name="remarks" rows="2" placeholder="Additional notes…"></textarea>
+        </label>
+        <button type="submit">Save Entry</button>
+      </form>
+    </article>
+
+    <!-- Existing entries -->
+    <h3>📋 {% if selected_date %}Entries for {{ selected_date }}{% else %}Recent Entries{% endif %}</h3>
+    {% for e in entries %}
+    <div style="border:1px solid var(--pico-muted-border-color);border-radius:8px;padding:1rem;margin-bottom:0.8rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;flex-wrap:wrap;gap:0.3rem">
+        <strong>{{ e.date }}</strong>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          {% if session.role == 'Admin' %}<span style="font-size:0.8rem;color:var(--pico-muted-color)">{{ e.username }}</span>{% endif %}
+          {% if e.user_id == session.user_id or session.role == 'Admin' %}
+          <form action="{{ url_for('worklog_delete', log_id=e.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete this entry?')">
+            <button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.1rem 0.5rem">🗑️</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      <p style="margin:0 0 0.4rem"><strong>Work Done:</strong><br>{{ e.work_done }}</p>
+      {% if e.blockers %}<p style="margin:0 0 0.4rem;color:#dc3545"><strong>Blockers:</strong><br>{{ e.blockers }}</p>{% endif %}
+      {% if e.remarks %}<p style="margin:0;color:var(--pico-muted-color)"><strong>Remarks:</strong><br>{{ e.remarks }}</p>{% endif %}
+    </div>
+    {% endfor %}
+    {% if not entries %}
+      <p style="color:var(--pico-muted-color)">No entries found.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

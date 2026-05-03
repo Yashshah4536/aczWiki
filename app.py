@@ -1,9 +1,11 @@
+import csv
+import io
 import os
 import socket
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from flask import (Flask, render_template, request, redirect, url_for,
-                   session, flash, jsonify, send_from_directory, abort)
+                   session, flash, jsonify, send_from_directory, abort, Response)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from database import get_db, init_db, create_default_admin, now
@@ -13,12 +15,18 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
+SHARED_FILE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf',
+                           'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt', 'csv'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024  # 32 MB
 
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def allowed_shared(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in SHARED_FILE_EXTENSIONS
 
 
 def login_required(f):
@@ -69,12 +77,39 @@ def get_all_tags(conn):
     return tag_counts
 
 
+def get_snippets(conn):
+    uid = session.get('user_id')
+    is_admin = session.get('role') == 'Admin'
+    rows = conn.execute(
+        "SELECT id, title, language FROM articles WHERE type='snippet' AND (is_private=0 OR created_by=? OR ?) ORDER BY updated_at DESC LIMIT 20",
+        (uid, 1 if is_admin else 0)
+    ).fetchall()
+    return rows
+
+
+def privacy_filter(uid, is_admin):
+    if is_admin:
+        return "1=1", ()
+    return "(a.is_private=0 OR a.created_by=?)", (uid,)
+
+
 def record_view(article_id):
     viewed = session.get('recently_viewed', [])
     if article_id in viewed:
         viewed.remove(article_id)
     viewed.insert(0, article_id)
     session['recently_viewed'] = viewed[:10]
+
+
+def calc_hours(login_time, logout_time):
+    try:
+        fmt = '%H:%M'
+        login = datetime.strptime(login_time, fmt)
+        logout = datetime.strptime(logout_time, fmt)
+        diff = (logout - login).total_seconds() / 3600
+        return round(max(diff, 0), 2)
+    except Exception:
+        return 0
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -108,23 +143,40 @@ def logout():
 @login_required
 def index():
     conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
+
+    announcements = conn.execute(
+        "SELECT a.*, u.username as author FROM announcements a LEFT JOIN users u ON a.created_by=u.id ORDER BY a.is_pinned DESC, a.created_at DESC LIMIT 3"
+    ).fetchall()
+
+    pf, pargs = privacy_filter(uid, is_admin)
     pinned = conn.execute(
-        "SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.is_pinned=1 ORDER BY a.updated_at DESC"
+        f"SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.is_pinned=1 AND a.type='article' AND {pf} ORDER BY a.updated_at DESC",
+        pargs
     ).fetchall()
+
     recent_edited = conn.execute(
-        "SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id ORDER BY a.updated_at DESC LIMIT 8"
+        f"SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.type='article' AND {pf} ORDER BY a.updated_at DESC LIMIT 8",
+        pargs
     ).fetchall()
+
     viewed_ids = session.get('recently_viewed', [])
     recently_viewed = []
     for aid in viewed_ids[:6]:
-        row = conn.execute("SELECT * FROM articles WHERE id=?", (aid,)).fetchone()
+        row = conn.execute(
+            f"SELECT * FROM articles a WHERE a.id=? AND {pf}", (aid,) + pargs
+        ).fetchone()
         if row:
             recently_viewed.append(row)
+
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('index.html', pinned=pinned, recent_edited=recent_edited,
-                           recently_viewed=recently_viewed, folders=folders, tags=tags)
+    return render_template('index.html', announcements=announcements, pinned=pinned,
+                           recent_edited=recent_edited, recently_viewed=recently_viewed,
+                           folders=folders, tags=tags, snippets=snippets)
 
 
 # ── Search ────────────────────────────────────────────────────────────────────
@@ -134,23 +186,28 @@ def index():
 def search():
     q = request.args.get('q', '').strip()
     conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
     results = []
     if q:
+        pf, pargs = privacy_filter(uid, is_admin)
         try:
             rows = conn.execute(
-                "SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.id IN (SELECT rowid FROM articles_fts WHERE articles_fts MATCH ?) ORDER BY a.updated_at DESC",
-                (q + '*',)
+                f"SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.id IN (SELECT rowid FROM articles_fts WHERE articles_fts MATCH ?) AND {pf} ORDER BY a.updated_at DESC",
+                (q + '*',) + pargs
             ).fetchall()
             results = rows
         except Exception:
             results = conn.execute(
-                "SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.title LIKE ? OR a.body LIKE ? OR a.tags LIKE ? ORDER BY a.updated_at DESC",
-                (f'%{q}%', f'%{q}%', f'%{q}%')
+                f"SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE (a.title LIKE ? OR a.body LIKE ? OR a.tags LIKE ?) AND {pf} ORDER BY a.updated_at DESC",
+                (f'%{q}%', f'%{q}%', f'%{q}%') + pargs
             ).fetchall()
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('search.html', results=results, q=q, folders=folders, tags=tags)
+    return render_template('search.html', results=results, q=q,
+                           folders=folders, tags=tags, snippets=snippets)
 
 
 # ── Folders ───────────────────────────────────────────────────────────────────
@@ -159,17 +216,22 @@ def search():
 @login_required
 def folder_view(folder_id):
     conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
     folder = conn.execute("SELECT * FROM folders WHERE id=?", (folder_id,)).fetchone()
     if not folder:
         abort(404)
+    pf, pargs = privacy_filter(uid, is_admin)
     articles = conn.execute(
-        "SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.folder_id=? ORDER BY a.updated_at DESC",
-        (folder_id,)
+        f"SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.folder_id=? AND {pf} ORDER BY a.updated_at DESC",
+        (folder_id,) + pargs
     ).fetchall()
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('folder.html', folder=folder, articles=articles, folders=folders, tags=tags)
+    return render_template('folder.html', folder=folder, articles=articles,
+                           folders=folders, tags=tags, snippets=snippets)
 
 
 @app.route('/folder/create', methods=['POST'])
@@ -226,10 +288,16 @@ def article_new():
         body = request.form.get('body', '')
         folder_id = request.form.get('folder_id') or None
         tags = request.form.get('tags', '').strip()
+        art_type = request.form.get('type', 'article')
+        language = request.form.get('language', '') if art_type == 'snippet' else ''
+        is_private = 1 if request.form.get('is_private') else 0
+        # For snippet, body comes from the code textarea
+        if art_type == 'snippet':
+            body = request.form.get('code_body', body)
         n = now()
         cur = conn.execute(
-            "INSERT INTO articles (title, body, folder_id, tags, created_by, created_at, updated_by, updated_at) VALUES (?,?,?,?,?,?,?,?)",
-            (title, body, folder_id, tags, session['user_id'], n, session['user_id'], n)
+            "INSERT INTO articles (title, body, folder_id, tags, created_by, created_at, updated_by, updated_at, is_private, type, language) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (title, body, folder_id, tags, session['user_id'], n, session['user_id'], n, is_private, art_type, language)
         )
         article_id = cur.lastrowid
         conn.execute(
@@ -242,20 +310,26 @@ def article_new():
         return redirect(url_for('article_view', article_id=article_id))
     folders = get_folders_tree(conn)
     tags_cloud = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('article_edit.html', article=None, folders=folders, tags=tags_cloud)
+    return render_template('article_edit.html', article=None, folders=folders,
+                           tags=tags_cloud, snippets=snippets)
 
 
 @app.route('/article/<int:article_id>')
 @login_required
 def article_view(article_id):
     conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
     article = conn.execute(
         "SELECT a.*, u.username as author, u2.username as updater FROM articles a LEFT JOIN users u ON a.created_by=u.id LEFT JOIN users u2 ON a.updated_by=u2.id WHERE a.id=?",
         (article_id,)
     ).fetchone()
     if not article:
         abort(404)
+    if article['is_private'] and article['created_by'] != uid and not is_admin:
+        abort(403)
     comments = conn.execute(
         "SELECT c.*, u.username FROM comments c LEFT JOIN users u ON c.user_id=u.id WHERE c.article_id=? ORDER BY c.created_at",
         (article_id,)
@@ -263,12 +337,25 @@ def article_view(article_id):
     attachments = conn.execute(
         "SELECT * FROM attachments WHERE article_id=? ORDER BY uploaded_at", (article_id,)
     ).fetchall()
+    # Reactions
+    reaction_rows = conn.execute(
+        "SELECT reaction_type, COUNT(*) as cnt FROM reactions WHERE article_id=? GROUP BY reaction_type",
+        (article_id,)
+    ).fetchall()
+    reactions = {r['reaction_type']: r['cnt'] for r in reaction_rows}
+    user_reaction_row = conn.execute(
+        "SELECT reaction_type FROM reactions WHERE article_id=? AND user_id=?",
+        (article_id, uid)
+    ).fetchone()
+    user_reaction = user_reaction_row['reaction_type'] if user_reaction_row else None
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
     record_view(article_id)
     return render_template('article_view.html', article=article, comments=comments,
-                           attachments=attachments, folders=folders, tags=tags)
+                           attachments=attachments, folders=folders, tags=tags,
+                           snippets=snippets, reactions=reactions, user_reaction=user_reaction)
 
 
 @app.route('/article/<int:article_id>/edit', methods=['GET', 'POST'])
@@ -276,22 +363,31 @@ def article_view(article_id):
 @role_required('Admin', 'Editor')
 def article_edit(article_id):
     conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
     article = conn.execute("SELECT * FROM articles WHERE id=?", (article_id,)).fetchone()
     if not article:
         abort(404)
+    if article['is_private'] and article['created_by'] != uid and not is_admin:
+        abort(403)
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
         body = request.form.get('body', '')
         folder_id = request.form.get('folder_id') or None
         tags = request.form.get('tags', '').strip()
+        art_type = request.form.get('type', 'article')
+        language = request.form.get('language', '') if art_type == 'snippet' else ''
+        is_private = 1 if request.form.get('is_private') else 0
+        if art_type == 'snippet':
+            body = request.form.get('code_body', body)
         n = now()
         conn.execute(
-            "UPDATE articles SET title=?, body=?, folder_id=?, tags=?, updated_by=?, updated_at=? WHERE id=?",
-            (title, body, folder_id, tags, session['user_id'], n, article_id)
+            "UPDATE articles SET title=?, body=?, folder_id=?, tags=?, updated_by=?, updated_at=?, is_private=?, type=?, language=? WHERE id=?",
+            (title, body, folder_id, tags, uid, n, is_private, art_type, language, article_id)
         )
         conn.execute(
             "INSERT INTO article_versions (article_id, title, body, tags, saved_by, saved_at) VALUES (?,?,?,?,?,?)",
-            (article_id, title, body, tags, session['user_id'], n)
+            (article_id, title, body, tags, uid, n)
         )
         conn.commit()
         conn.close()
@@ -299,8 +395,10 @@ def article_edit(article_id):
         return redirect(url_for('article_view', article_id=article_id))
     folders = get_folders_tree(conn)
     tags_cloud = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('article_edit.html', article=article, folders=folders, tags=tags_cloud)
+    return render_template('article_edit.html', article=article, folders=folders,
+                           tags=tags_cloud, snippets=snippets)
 
 
 @app.route('/article/<int:article_id>/delete', methods=['POST'])
@@ -328,6 +426,37 @@ def article_pin(article_id):
     return redirect(request.referrer or url_for('article_view', article_id=article_id))
 
 
+# ── Reactions ─────────────────────────────────────────────────────────────────
+
+@app.route('/article/<int:article_id>/react', methods=['POST'])
+@login_required
+def article_react(article_id):
+    reaction_type = request.form.get('reaction_type')
+    if reaction_type not in ('helpful', 'needs_update'):
+        abort(400)
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT * FROM reactions WHERE article_id=? AND user_id=?",
+        (article_id, session['user_id'])
+    ).fetchone()
+    if existing:
+        if existing['reaction_type'] == reaction_type:
+            # Toggle off
+            conn.execute("DELETE FROM reactions WHERE id=?", (existing['id'],))
+        else:
+            # Change reaction
+            conn.execute("UPDATE reactions SET reaction_type=?, created_at=? WHERE id=?",
+                         (reaction_type, now(), existing['id']))
+    else:
+        conn.execute(
+            "INSERT INTO reactions (article_id, user_id, reaction_type, created_at) VALUES (?,?,?,?)",
+            (article_id, session['user_id'], reaction_type, now())
+        )
+    conn.commit()
+    conn.close()
+    return redirect(url_for('article_view', article_id=article_id))
+
+
 # ── Version History ───────────────────────────────────────────────────────────
 
 @app.route('/article/<int:article_id>/history')
@@ -343,8 +472,10 @@ def article_history(article_id):
     ).fetchall()
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('history.html', article=article, versions=versions, folders=folders, tags=tags)
+    return render_template('history.html', article=article, versions=versions,
+                           folders=folders, tags=tags, snippets=snippets)
 
 
 @app.route('/article/<int:article_id>/restore/<int:version_id>', methods=['POST'])
@@ -376,14 +507,44 @@ def article_restore(article_id, version_id):
 @login_required
 def tag_view(tag):
     conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
+    pf, pargs = privacy_filter(uid, is_admin)
     articles = conn.execute(
-        "SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE (',' || a.tags || ',') LIKE ? ORDER BY a.updated_at DESC",
-        (f'%,{tag},%',)
+        f"SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE (',' || a.tags || ',') LIKE ? AND {pf} ORDER BY a.updated_at DESC",
+        (f'%,{tag},%',) + pargs
     ).fetchall()
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('tag.html', tag=tag, articles=articles, folders=folders, tags=tags)
+    return render_template('tag.html', tag=tag, articles=articles,
+                           folders=folders, tags=tags, snippets=snippets)
+
+
+# ── Snippets list ─────────────────────────────────────────────────────────────
+
+@app.route('/snippets')
+@login_required
+def snippets_list():
+    conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
+    pf, pargs = privacy_filter(uid, is_admin)
+    lang = request.args.get('lang', '')
+    lang_filter = "AND a.language=?" if lang else ""
+    lang_args = (lang,) if lang else ()
+    rows = conn.execute(
+        f"SELECT a.*, u.username as author FROM articles a LEFT JOIN users u ON a.created_by=u.id WHERE a.type='snippet' AND {pf} {lang_filter} ORDER BY a.updated_at DESC",
+        pargs + lang_args
+    ).fetchall()
+    langs = conn.execute("SELECT DISTINCT language FROM articles WHERE type='snippet' AND language != '' ORDER BY language").fetchall()
+    folders = get_folders_tree(conn)
+    tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
+    conn.close()
+    return render_template('snippets.html', snippets_list=rows, langs=langs,
+                           selected_lang=lang, folders=folders, tags=tags, snippets=snippets)
 
 
 # ── Comments ──────────────────────────────────────────────────────────────────
@@ -444,6 +605,20 @@ def upload_attachment(article_id):
     return redirect(url_for('article_view', article_id=article_id))
 
 
+@app.route('/upload_image', methods=['POST'])
+@login_required
+def upload_image():
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'error': 'No file provided'}), 400
+    ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+    if ext not in {'png', 'jpg', 'jpeg', 'gif', 'webp'}:
+        return jsonify({'error': 'Invalid image type'}), 400
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    return jsonify({'url': url_for('serve_upload', filename=filename)})
+
+
 @app.route('/uploads/<filename>')
 @login_required
 def serve_upload(filename):
@@ -483,9 +658,315 @@ def article_pdf(article_id):
         abort(404)
     html_content = render_template('pdf_export.html', article=article)
     pdf = HTML(string=html_content, base_url=request.base_url).write_pdf()
-    from flask import Response
     return Response(pdf, mimetype='application/pdf',
                     headers={'Content-Disposition': f'attachment; filename="article-{article_id}.pdf"'})
+
+
+# ── Announcements ─────────────────────────────────────────────────────────────
+
+@app.route('/announcements')
+@login_required
+def announcements():
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT a.*, u.username as author FROM announcements a LEFT JOIN users u ON a.created_by=u.id ORDER BY a.is_pinned DESC, a.created_at DESC"
+    ).fetchall()
+    folders = get_folders_tree(conn)
+    tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
+    conn.close()
+    return render_template('announcements.html', announcements=rows,
+                           folders=folders, tags=tags, snippets=snippets)
+
+
+@app.route('/announcements/create', methods=['POST'])
+@login_required
+@role_required('Admin')
+def announcement_create():
+    title = request.form.get('title', '').strip()
+    body = request.form.get('body', '').strip()
+    is_pinned = 1 if request.form.get('is_pinned') else 0
+    if title and body:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO announcements (title, body, created_by, created_at, is_pinned) VALUES (?,?,?,?,?)",
+            (title, body, session['user_id'], now(), is_pinned)
+        )
+        conn.commit()
+        conn.close()
+        flash('Announcement posted.', 'success')
+    return redirect(url_for('announcements'))
+
+
+@app.route('/announcements/<int:ann_id>/delete', methods=['POST'])
+@login_required
+@role_required('Admin')
+def announcement_delete(ann_id):
+    conn = get_db()
+    conn.execute("DELETE FROM announcements WHERE id=?", (ann_id,))
+    conn.commit()
+    conn.close()
+    flash('Announcement deleted.', 'success')
+    return redirect(url_for('announcements'))
+
+
+@app.route('/announcements/<int:ann_id>/pin', methods=['POST'])
+@login_required
+@role_required('Admin')
+def announcement_pin(ann_id):
+    conn = get_db()
+    row = conn.execute("SELECT is_pinned FROM announcements WHERE id=?", (ann_id,)).fetchone()
+    if row:
+        conn.execute("UPDATE announcements SET is_pinned=? WHERE id=?", (0 if row['is_pinned'] else 1, ann_id))
+        conn.commit()
+    conn.close()
+    return redirect(url_for('announcements'))
+
+
+# ── Work Log ──────────────────────────────────────────────────────────────────
+
+@app.route('/worklog', methods=['GET', 'POST'])
+@login_required
+def worklog():
+    conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
+
+    if request.method == 'POST':
+        log_date = request.form.get('date', str(date.today()))
+        work_done = request.form.get('work_done', '').strip()
+        blockers = request.form.get('blockers', '').strip()
+        remarks = request.form.get('remarks', '').strip()
+        if work_done:
+            conn.execute(
+                "INSERT INTO work_logs (user_id, date, work_done, blockers, remarks, created_at) VALUES (?,?,?,?,?,?)",
+                (uid, log_date, work_done, blockers, remarks, now())
+            )
+            conn.commit()
+            flash('Work log saved.', 'success')
+        return redirect(url_for('worklog'))
+
+    filter_uid = request.args.get('user_id', '')
+    selected_date = request.args.get('date', '')
+
+    query = "SELECT w.*, u.username FROM work_logs w LEFT JOIN users u ON w.user_id=u.id WHERE 1=1"
+    params = []
+    if not is_admin:
+        query += " AND w.user_id=?"
+        params.append(uid)
+    elif filter_uid:
+        query += " AND w.user_id=?"
+        params.append(filter_uid)
+    if selected_date:
+        query += " AND w.date=?"
+        params.append(selected_date)
+    query += " ORDER BY w.date DESC, w.created_at DESC"
+    entries = conn.execute(query, params).fetchall()
+
+    # Sidebar: distinct dates for current user
+    all_entries = conn.execute(
+        "SELECT DISTINCT date FROM work_logs WHERE user_id=? ORDER BY date DESC LIMIT 30",
+        (uid,)
+    ).fetchall()
+
+    all_users = conn.execute("SELECT id, username FROM users ORDER BY username").fetchall() if is_admin else []
+    folders = get_folders_tree(conn)
+    tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
+    conn.close()
+    return render_template('worklog.html', entries=entries, all_entries=all_entries,
+                           today=str(date.today()), all_users=all_users,
+                           selected_date=selected_date, filter_user_id=filter_uid,
+                           folders=folders, tags=tags, snippets=snippets)
+
+
+@app.route('/worklog/<int:log_id>/delete', methods=['POST'])
+@login_required
+def worklog_delete(log_id):
+    conn = get_db()
+    entry = conn.execute("SELECT * FROM work_logs WHERE id=?", (log_id,)).fetchone()
+    if entry and (entry['user_id'] == session['user_id'] or session['role'] == 'Admin'):
+        conn.execute("DELETE FROM work_logs WHERE id=?", (log_id,))
+        conn.commit()
+    conn.close()
+    return redirect(url_for('worklog'))
+
+
+# ── Timesheet ─────────────────────────────────────────────────────────────────
+
+@app.route('/timesheet', methods=['GET', 'POST'])
+@login_required
+def timesheet():
+    conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
+
+    if request.method == 'POST':
+        ts_date = request.form.get('date', str(date.today()))
+        login_time = request.form.get('login_time', '')
+        logout_time = request.form.get('logout_time', '')
+        tasks_done = request.form.get('tasks_done', '').strip()
+        remarks = request.form.get('remarks', '').strip()
+        if tasks_done and login_time and logout_time:
+            conn.execute(
+                "INSERT INTO timesheets (user_id, date, login_time, logout_time, tasks_done, remarks, created_at) VALUES (?,?,?,?,?,?,?)",
+                (uid, ts_date, login_time, logout_time, tasks_done, remarks, now())
+            )
+            conn.commit()
+            flash('Timesheet entry saved.', 'success')
+        return redirect(url_for('timesheet'))
+
+    filter_uid = request.args.get('user_id', '')
+    filter_from = request.args.get('from_date', '')
+    filter_to = request.args.get('to_date', '')
+
+    query = "SELECT t.*, u.username FROM timesheets t LEFT JOIN users u ON t.user_id=u.id WHERE 1=1"
+    params = []
+    if not is_admin:
+        query += " AND t.user_id=?"
+        params.append(uid)
+    elif filter_uid:
+        query += " AND t.user_id=?"
+        params.append(filter_uid)
+    if filter_from:
+        query += " AND t.date >= ?"
+        params.append(filter_from)
+    if filter_to:
+        query += " AND t.date <= ?"
+        params.append(filter_to)
+    query += " ORDER BY t.date DESC, t.login_time"
+    raw_entries = conn.execute(query, params).fetchall()
+
+    entries = []
+    total_hours = 0
+    for e in raw_entries:
+        d = dict(e)
+        h = calc_hours(e['login_time'], e['logout_time'])
+        d['hours'] = h
+        total_hours += h
+        entries.append(d)
+    total_hours = round(total_hours, 2)
+
+    all_users = conn.execute("SELECT id, username FROM users ORDER BY username").fetchall() if is_admin else []
+    folders = get_folders_tree(conn)
+    tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
+    conn.close()
+    return render_template('timesheet.html', entries=entries, total_hours=total_hours,
+                           today=str(date.today()), all_users=all_users,
+                           filter_uid=filter_uid, filter_user_id=filter_uid,
+                           filter_from=filter_from, filter_to=filter_to,
+                           folders=folders, tags=tags, snippets=snippets)
+
+
+@app.route('/timesheet/<int:entry_id>/delete', methods=['POST'])
+@login_required
+def timesheet_delete(entry_id):
+    conn = get_db()
+    entry = conn.execute("SELECT * FROM timesheets WHERE id=?", (entry_id,)).fetchone()
+    if entry and (entry['user_id'] == session['user_id'] or session['role'] == 'Admin'):
+        conn.execute("DELETE FROM timesheets WHERE id=?", (entry_id,))
+        conn.commit()
+    conn.close()
+    return redirect(url_for('timesheet'))
+
+
+@app.route('/timesheet/export')
+@login_required
+@role_required('Admin')
+def timesheet_export():
+    conn = get_db()
+    filter_uid = request.args.get('user_id', '')
+    filter_from = request.args.get('from_date', '')
+    filter_to = request.args.get('to_date', '')
+
+    query = "SELECT t.*, u.username FROM timesheets t LEFT JOIN users u ON t.user_id=u.id WHERE 1=1"
+    params = []
+    if filter_uid:
+        query += " AND t.user_id=?"
+        params.append(filter_uid)
+    if filter_from:
+        query += " AND t.date >= ?"
+        params.append(filter_from)
+    if filter_to:
+        query += " AND t.date <= ?"
+        params.append(filter_to)
+    query += " ORDER BY t.date, u.username"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['User', 'Date', 'Login', 'Logout', 'Hours', 'Tasks Done', 'Remarks'])
+    for r in rows:
+        h = calc_hours(r['login_time'], r['logout_time'])
+        writer.writerow([r['username'], r['date'], r['login_time'], r['logout_time'], h, r['tasks_done'], r['remarks']])
+    output.seek(0)
+    return Response(output.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': 'attachment; filename="timesheets.csv"'})
+
+
+# ── File Sharing ──────────────────────────────────────────────────────────────
+
+@app.route('/files', methods=['GET', 'POST'])
+@login_required
+def files():
+    conn = get_db()
+    uid = session['user_id']
+    is_admin = session['role'] == 'Admin'
+
+    if request.method == 'POST':
+        f = request.files.get('file')
+        description = request.form.get('description', '').strip()
+        visibility = request.form.get('visibility', 'everyone')
+        if f and f.filename and allowed_shared(f.filename):
+            original = secure_filename(f.filename)
+            ext = original.rsplit('.', 1)[1].lower()
+            stored_name = f"{uuid.uuid4().hex}.{ext}"
+            f.save(os.path.join(app.config['UPLOAD_FOLDER'], stored_name))
+            conn.execute(
+                "INSERT INTO shared_files (stored_name, original_name, description, uploaded_by, uploaded_at, visibility) VALUES (?,?,?,?,?,?)",
+                (stored_name, original, description, uid, now(), visibility)
+            )
+            conn.commit()
+            flash('File uploaded.', 'success')
+        else:
+            flash('Invalid or missing file.', 'error')
+        conn.close()
+        return redirect(url_for('files'))
+
+    if is_admin:
+        rows = conn.execute(
+            "SELECT f.*, u.username as uploader FROM shared_files f LEFT JOIN users u ON f.uploaded_by=u.id ORDER BY f.uploaded_at DESC"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT f.*, u.username as uploader FROM shared_files f LEFT JOIN users u ON f.uploaded_by=u.id WHERE f.visibility='everyone' OR f.uploaded_by=? ORDER BY f.uploaded_at DESC",
+            (uid,)
+        ).fetchall()
+
+    folders = get_folders_tree(conn)
+    tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
+    conn.close()
+    return render_template('files.html', files=rows, folders=folders, tags=tags, snippets=snippets)
+
+
+@app.route('/files/<int:file_id>/delete', methods=['POST'])
+@login_required
+def file_delete(file_id):
+    conn = get_db()
+    f = conn.execute("SELECT * FROM shared_files WHERE id=?", (file_id,)).fetchone()
+    if f and (f['uploaded_by'] == session['user_id'] or session['role'] == 'Admin'):
+        try:
+            os.remove(os.path.join(app.config['UPLOAD_FOLDER'], f['stored_name']))
+        except FileNotFoundError:
+            pass
+        conn.execute("DELETE FROM shared_files WHERE id=?", (file_id,))
+        conn.commit()
+        flash('File deleted.', 'success')
+    conn.close()
+    return redirect(url_for('files'))
 
 
 # ── User Management (Admin) ───────────────────────────────────────────────────
@@ -498,8 +979,9 @@ def admin_users():
     users = conn.execute("SELECT * FROM users ORDER BY username").fetchall()
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
-    return render_template('admin_users.html', users=users, folders=folders, tags=tags)
+    return render_template('admin_users.html', users=users, folders=folders, tags=tags, snippets=snippets)
 
 
 @app.route('/admin/users/create', methods=['POST'])
@@ -582,9 +1064,10 @@ def profile():
     comment_count = conn.execute("SELECT COUNT(*) FROM comments WHERE user_id=?", (session['user_id'],)).fetchone()[0]
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
+    snippets = get_snippets(conn)
     conn.close()
     return render_template('profile.html', user=user, article_count=article_count,
-                           comment_count=comment_count, folders=folders, tags=tags)
+                           comment_count=comment_count, folders=folders, tags=tags, snippets=snippets)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Announcements — AczWiki{% endblock %}
+{% block content %}
+<h2>📢 Announcements</h2>
+
+{% if session.role == 'Admin' %}
+<article>
+  <h3 style="margin-top:0">➕ Post Announcement</h3>
+  <form method="post" action="{{ url_for('announcement_create') }}">
+    <label>Title <input type="text" name="title" required placeholder="Announcement title…"></label>
+    <label>Body <textarea name="body" rows="4" required placeholder="Write your announcement…"></textarea></label>
+    <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+      <input type="checkbox" name="is_pinned" role="switch" style="margin:0"> 📌 Pin this announcement
+    </label>
+    <button type="submit" style="margin-top:0.6rem">Post</button>
+  </form>
+</article>
+{% endif %}
+
+{% for ann in announcements %}
+<div class="ann-card" style="position:relative">
+  <h4 style="margin-right:6rem">{% if ann.is_pinned %}📌 {% endif %}{{ ann.title }}</h4>
+  <p>{{ ann.body }}</p>
+  <small style="color:var(--pico-muted-color)">Posted by {{ ann.author }} · {{ ann.created_at[:10] }}</small>
+  {% if session.role == 'Admin' %}
+  <div style="position:absolute;top:0.7rem;right:0.7rem;display:flex;gap:0.4rem">
+    <form action="{{ url_for('announcement_pin', ann_id=ann.id) }}" method="post" style="margin:0">
+      <button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.15rem 0.5rem">{% if ann.is_pinned %}Unpin{% else %}📌 Pin{% endif %}</button>
+    </form>
+    <form action="{{ url_for('announcement_delete', ann_id=ann.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete this announcement?')">
+      <button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.15rem 0.5rem;color:#dc3545;border-color:#dc3545">🗑️</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% if not announcements %}
+  <p style="color:var(--pico-muted-color)">No announcements yet.</p>
+{% endif %}
+{% endblock %}

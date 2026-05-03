@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Code Snippets — AczWiki{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.8rem;margin-bottom:1.2rem">
+  <h2 style="margin:0">💻 Code Snippets</h2>
+  {% if session.role in ('Admin','Editor') %}
+  <a href="{{ url_for('article_new') }}?type=snippet" role="button" class="outline">+ New Snippet</a>
+  {% endif %}
+</div>
+
+<!-- Language filter -->
+<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1.2rem">
+  <a href="{{ url_for('snippets_list') }}" class="tag-chip {% if not selected_lang %}outline{% endif %}">All</a>
+  {% for l in langs %}
+    <a href="{{ url_for('snippets_list') }}?lang={{ l.language }}" class="tag-chip">{{ l.language|capitalize }}</a>
+  {% endfor %}
+</div>
+
+{% for s in snippets_list %}
+<div class="article-card">
+  <h3>
+    <a href="{{ url_for('article_view', article_id=s.id) }}">{{ s.title }}</a>
+    {% if s.is_private %}<span class="private-badge">🔒</span>{% endif %}
+    <span style="font-size:0.75rem;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:0.08rem 0.4rem;border-radius:4px">{{ s.language or 'code' }}</span>
+  </h3>
+  <div class="article-meta">By {{ s.author }} · {{ s.updated_at[:10] }}</div>
+  {% if s.tags %}<div class="article-tags">{% for tag in s.tags.split(',') %}{% if tag.strip() %}<a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>{% endif %}{% endfor %}</div>{% endif %}
+</div>
+{% endfor %}
+{% if not snippets_list %}
+  <p style="color:var(--pico-muted-color)">No snippets found.</p>
+{% endif %}
+{% endblock %}

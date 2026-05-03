@@ -1,0 +1,20 @@
+Make the following additions to the existing AczWiki Flask + SQLite app. Do NOT restructure existing files. Add new DB tables in database.py and new routes in app.py. Add new HTML templates in templates/. Keep all frontend as plain HTML + CDN only.
+1. Private articles and folders
+Add an is_private boolean column to the articles table (default False). If is_private is True, only the article's creator and Admin-role users can see or access it. Show a lock icon on private articles in the sidebar and search results. Add a "Make Private / Make Public" toggle button on the article edit page.
+2. Code snippet support
+Add an article type field: type = article or snippet. When type is snippet, render the body inside a code block with syntax highlighting using Highlight.js via CDN. Add a language selector dropdown (Python, C++, C#, JavaScript, SQL, Bash, Other) when creating a snippet. Add a "Copy code" button on snippet view. Add a "Snippets" section in the sidebar that lists all snippets separately from articles.
+3. Daily work log (personal)
+Add a new page /worklog — each user has their own work log. A log entry has: date (auto-filled to today), work done (textarea), blockers (textarea, optional), and remarks (optional). Users can only see their own logs. Admins can view all users' logs filtered by date or user. Show a calendar-style list of past entries on the sidebar of this page.
+4. Timesheet
+Add a new page /timesheet — each user can record: date, login time, logout time, tasks done (text), remarks. This auto-calculates hours worked. Admins see a full table of all users' timesheets filterable by user and date range. Add a simple "Export to CSV" button for admins. Store in a new timesheets table in SQLite.
+5. Announcements / notice board
+Add a new announcements table: title, body, created_by, created_at, is_pinned. Only Admins can create/delete announcements. Show the latest 3 announcements as a notice board section on the homepage above the recent articles. Pinned announcements always show first.
+6. Team file sharing
+Add a /files page where users can upload any file (PDF, image, docx, xlsx, zip — max 20MB). Each file has: name, description, uploaded_by, uploaded_at, and visibility (everyone or private). Private files are only visible to the uploader and admins. Show files in a clean table with download links. Store file metadata in a new shared_files table. Serve files from the existing uploads/ folder.
+7. Article reactions
+Add a reactions row below each article with two buttons: "👍 Helpful" and "👎 Needs update". Each user can react once per article. Show the count next to each button. Store in a new reactions table. This helps the team identify outdated or useful articles.
+8. UI fixes
+
+Fix the Quill rich text editor so it loads and saves properly on the article create and edit pages
+Fix the file/PDF upload in the article content section — ensure uploaded files are saved to the uploads/ folder and the link is inserted into the article body correctly
+On the article view page, show: author name, created date, last edited by, last edited date — in a small muted line below the title

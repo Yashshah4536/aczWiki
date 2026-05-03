@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Timesheet — AczWiki{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.8rem;margin-bottom:1.2rem">
+  <h2 style="margin:0">🕐 Timesheet</h2>
+  {% if session.role == 'Admin' %}
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+    <form method="get" style="display:flex;gap:0.5rem;align-items:center;margin:0;flex-wrap:wrap">
+      <select name="user_id" style="font-size:0.85rem;margin:0">
+        <option value="">All Users</option>
+        {% for u in all_users %}
+          <option value="{{ u.id }}" {% if u.id|string == filter_user_id %}selected{% endif %}>{{ u.username }}</option>
+        {% endfor %}
+      </select>
+      <input type="date" name="from_date" value="{{ filter_from }}" style="font-size:0.85rem;margin:0">
+      <input type="date" name="to_date" value="{{ filter_to }}" style="font-size:0.85rem;margin:0">
+      <button type="submit" class="outline" style="margin:0;font-size:0.85rem">Filter</button>
+    </form>
+    <a href="{{ url_for('timesheet_export') }}?user_id={{ filter_user_id }}&from_date={{ filter_from }}&to_date={{ filter_to }}" role="button" class="outline secondary" style="font-size:0.85rem;white-space:nowrap">📥 Export CSV</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- New entry -->
+<article>
+  <h3 style="margin-top:0">➕ Log Today's Time</h3>
+  <form method="post">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;flex-wrap:wrap">
+      <label>Date <input type="date" name="date" value="{{ today }}" required></label>
+      <label>Login Time <input type="time" name="login_time" required></label>
+      <label>Logout Time <input type="time" name="logout_time" required></label>
+    </div>
+    <label>Tasks Done <span style="color:#dc3545">*</span>
+      <textarea name="tasks_done" rows="3" required placeholder="What tasks did you complete?"></textarea>
+    </label>
+    <label>Remarks <small style="color:var(--pico-muted-color)">(optional)</small>
+      <textarea name="remarks" rows="2" placeholder="Any additional remarks…"></textarea>
+    </label>
+    <button type="submit">Save</button>
+  </form>
+</article>
+
+<!-- Table -->
+<div class="overflow-auto">
+  <table>
+    <thead>
+      <tr>
+        {% if session.role == 'Admin' %}<th>User</th>{% endif %}
+        <th>Date</th>
+        <th>Login</th>
+        <th>Logout</th>
+        <th>Hours</th>
+        <th>Tasks Done</th>
+        <th>Remarks</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        {% if session.role == 'Admin' %}<td style="font-size:0.85rem">{{ e.username }}</td>{% endif %}
+        <td style="white-space:nowrap">{{ e.date }}</td>
+        <td>{{ e.login_time }}</td>
+        <td>{{ e.logout_time }}</td>
+        <td><strong>{{ e.hours }}</strong>h</td>
+        <td style="font-size:0.85rem;max-width:280px">{{ e.tasks_done }}</td>
+        <td style="font-size:0.85rem;color:var(--pico-muted-color)">{{ e.remarks }}</td>
+        <td>
+          {% if e.user_id == session.user_id or session.role == 'Admin' %}
+          <form action="{{ url_for('timesheet_delete', entry_id=e.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete entry?')">
+            <button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.1rem 0.5rem">🗑️</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not entries %}
+      <tr><td colspan="8" style="text-align:center;color:var(--pico-muted-color)">No entries found.</td></tr>
+      {% endif %}
+    </tbody>
+    {% if entries %}
+    <tfoot>
+      <tr>
+        {% if session.role == 'Admin' %}<td></td>{% endif %}
+        <td colspan="3"><strong>Total</strong></td>
+        <td><strong>{{ total_hours }}h</strong></td>
+        <td colspan="3"></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</div>
+{% endblock %}

@@ -1,24 +1,37 @@
 {% extends "base.html" %}
-{% block title %}{{ article.title }} — Knowledge Base{% endblock %}
+{% block title %}{{ article.title }} — AczWiki{% endblock %}
 {% block content %}
-<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem">
+
+<!-- Header row -->
+<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.8rem">
   <div>
-    <h2 style="margin:0">{{ article.title }}{% if article.is_pinned %} <span class="pinned-badge">Pinned</span>{% endif %}</h2>
+    <h2 style="margin:0 0 0.3rem">
+      {{ article.title }}
+      {% if article.is_pinned %}<span class="pinned-badge">📌 Pinned</span>{% endif %}
+      {% if article.is_private %}<span class="pinned-badge" style="background:#e8d5ff;color:#5b21b6;border-color:#a78bfa">🔒 Private</span>{% endif %}
+      {% if article.type == 'snippet' %}<span class="pinned-badge" style="background:#dbeafe;color:#1e40af;border-color:#93c5fd">💻 Snippet</span>{% endif %}
+    </h2>
     <div class="article-meta">
-      Created by {{ article.author }} on {{ article.created_at[:10] }}
-      {% if article.updater %} · Last updated by {{ article.updater }} on {{ article.updated_at[:10] }}{% endif %}
+      By <strong>{{ article.author }}</strong> on {{ article.created_at[:10] }}
+      {% if article.updater and article.updater != article.author %}
+        · Last edited by <strong>{{ article.updater }}</strong> on {{ article.updated_at[:10] }}
+      {% elif article.updater %}
+        · Updated {{ article.updated_at[:10] }}
+      {% endif %}
     </div>
   </div>
-  <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+  <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
     {% if session.role in ('Admin','Editor') %}
       <a href="{{ url_for('article_edit', article_id=article.id) }}" role="button" class="outline">✏️ Edit</a>
     {% endif %}
-    <button id="copy-link-btn" class="outline secondary" onclick="copyArticleLink()" title="Copy link to this article">🔗 Copy Link</button>
+    <button id="copy-link-btn" class="outline secondary" onclick="copyArticleLink()">🔗 Copy Link</button>
     <a href="{{ url_for('article_history', article_id=article.id) }}" role="button" class="outline secondary">🕓 History</a>
-    <a href="{{ url_for('article_pdf', article_id=article.id) }}" role="button" class="outline secondary">📄 PDF</a>
+    {% if article.type != 'snippet' %}
+      <a href="{{ url_for('article_pdf', article_id=article.id) }}" role="button" class="outline secondary">📄 PDF</a>
+    {% endif %}
     {% if session.role == 'Admin' %}
       <form action="{{ url_for('article_pin', article_id=article.id) }}" method="post" style="margin:0">
-        <button type="submit" class="outline secondary">{% if article.is_pinned %}📌 Unpin{% else %}📌 Pin{% endif %}</button>
+        <button type="submit" class="outline secondary">{% if article.is_pinned %}Unpin{% else %}📌 Pin{% endif %}</button>
       </form>
       <form action="{{ url_for('article_delete', article_id=article.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete this article?')">
         <button type="submit" class="outline secondary" style="color:#dc3545;border-color:#dc3545">🗑️ Delete</button>
@@ -35,12 +48,40 @@
 </div>
 {% endif %}
 
-<div class="article-body">
+<!-- Body / Snippet -->
+{% if article.type == 'snippet' %}
+<div style="position:relative;margin-bottom:1.5rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;background:#1e1e2e;color:#cdd6f4;padding:0.5rem 1rem;border-radius:8px 8px 0 0;font-size:0.85rem">
+    <span>{{ article.language or 'code' }}</span>
+    <button onclick="copyCode()" class="outline" style="color:#cdd6f4;border-color:#555;font-size:0.78rem;padding:0.2rem 0.7rem;margin:0">📋 Copy Code</button>
+  </div>
+  <pre style="margin:0;border-radius:0 0 8px 8px;overflow-x:auto"><code id="snippet-body" class="language-{{ article.language or 'plaintext' }}">{{ article.body }}</code></pre>
+</div>
+{% else %}
+<div class="article-body" style="margin-bottom:1.5rem">
   {{ article.body|safe }}
+</div>
+{% endif %}
+
+<!-- Reactions -->
+<div style="display:flex;gap:0.6rem;margin-bottom:1rem;align-items:center">
+  <span style="font-size:0.85rem;color:var(--pico-muted-color)">Was this helpful?</span>
+  <form action="{{ url_for('article_react', article_id=article.id) }}" method="post" style="margin:0">
+    <input type="hidden" name="reaction_type" value="helpful">
+    <button type="submit" class="outline {% if user_reaction == 'helpful' %}{% else %}secondary{% endif %}" style="font-size:0.85rem;padding:0.25rem 0.8rem;margin:0">
+      👍 Helpful <strong>{{ reactions.get('helpful',0) }}</strong>
+    </button>
+  </form>
+  <form action="{{ url_for('article_react', article_id=article.id) }}" method="post" style="margin:0">
+    <input type="hidden" name="reaction_type" value="needs_update">
+    <button type="submit" class="outline {% if user_reaction == 'needs_update' %}{% else %}secondary{% endif %}" style="font-size:0.85rem;padding:0.25rem 0.8rem;margin:0">
+      👎 Needs Update <strong>{{ reactions.get('needs_update',0) }}</strong>
+    </button>
+  </form>
 </div>
 
 <!-- Last edited footer -->
-<div style="margin-top:2rem;padding-top:1rem;border-top:1px solid var(--pico-muted-border-color);font-size:0.85rem;color:var(--pico-muted-color)">
+<div style="padding-top:0.8rem;border-top:1px solid var(--pico-muted-border-color);font-size:0.83rem;color:var(--pico-muted-color);margin-bottom:2rem">
   {% if article.updater %}
     Last edited by <strong>{{ article.updater }}</strong> on {{ article.updated_at[:10] }}
   {% else %}
@@ -49,7 +90,7 @@
 </div>
 
 <!-- Attachments -->
-<section style="margin-top:2rem">
+<section style="margin-bottom:2rem">
   <h3>📎 Attachments</h3>
   {% if attachments %}
   <ul class="attachment-list">
@@ -68,9 +109,8 @@
   {% else %}
     <p style="color:var(--pico-muted-color);font-size:0.9rem">No attachments.</p>
   {% endif %}
-
   {% if session.role in ('Admin','Editor') %}
-  <form action="{{ url_for('upload_attachment', article_id=article.id) }}" method="post" enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap">
+  <form action="{{ url_for('upload_attachment', article_id=article.id) }}" method="post" enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;margin-top:0.6rem;flex-wrap:wrap">
     <input type="file" name="file" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf" style="margin:0;flex:1">
     <button type="submit" class="outline" style="white-space:nowrap">Upload File</button>
   </form>
@@ -78,7 +118,7 @@
 </section>
 
 <!-- Comments -->
-<section id="comments" style="margin-top:2rem">
+<section id="comments">
   <h3>💬 Comments ({{ comments|length }})</h3>
   {% for c in comments %}
   <div class="comment">
@@ -94,14 +134,30 @@
   {% if not comments %}
     <p style="color:var(--pico-muted-color);font-size:0.9rem">No comments yet.</p>
   {% endif %}
-
   <form action="{{ url_for('comment_add', article_id=article.id) }}" method="post" style="margin-top:1rem">
     <textarea name="body" placeholder="Write a comment…" rows="3" required style="margin-bottom:0.4rem"></textarea>
     <button type="submit">Post Comment</button>
   </form>
 </section>
 {% endblock %}
+
 {% block scripts %}
+{% if article.type == 'snippet' %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script>
+function copyCode() {
+  const code = document.getElementById('snippet-body').innerText;
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = '✅ Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  });
+}
+</script>
+{% endif %}
 <script>
 function copyArticleLink() {
   const btn = document.getElementById('copy-link-btn');
@@ -109,9 +165,7 @@ function copyArticleLink() {
     const orig = btn.textContent;
     btn.textContent = '✅ Copied!';
     setTimeout(() => { btn.textContent = orig; }, 2000);
-  }).catch(() => {
-    prompt('Copy this link:', window.location.href);
-  });
+  }).catch(() => { prompt('Copy this link:', window.location.href); });
 }
 </script>
 {% endblock %}

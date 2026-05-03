@@ -2,30 +2,44 @@
 {% block title %}Home — AczWiki{% endblock %}
 {% block content %}
 
-<div style="background:linear-gradient(135deg,var(--pico-primary-background) 0%,var(--pico-background-color) 100%);border:1px solid var(--pico-primary-border);border-radius:12px;padding:2rem 2.5rem;margin-bottom:2rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+<!-- Welcome banner -->
+<div style="background:linear-gradient(135deg,var(--pico-primary-background) 0%,var(--pico-background-color) 100%);border:1px solid var(--pico-primary-border);border-radius:12px;padding:1.8rem 2rem;margin-bottom:1.8rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
   <div>
-    <h1 style="margin:0 0 0.4rem;font-size:1.8rem">👋 Welcome to AczWiki</h1>
-    <p style="margin:0;color:var(--pico-muted-color);max-width:520px">Your team's internal knowledge base. Create, organize, and share articles, documents, and guides — all in one place, accessible on your local network.</p>
+    <h1 style="margin:0 0 0.35rem;font-size:1.7rem">👋 Welcome to AczWiki</h1>
+    <p style="margin:0;color:var(--pico-muted-color);max-width:520px">Your team's internal knowledge base. Create, organize, and share articles, docs, snippets and files — all in one place on your LAN.</p>
   </div>
   {% if session.role in ('Admin','Editor') %}
-  <a href="{{ url_for('article_new') }}" role="button" style="white-space:nowrap;font-size:1rem;padding:0.7rem 1.4rem">✨ New Article</a>
+  <a href="{{ url_for('article_new') }}" role="button" style="white-space:nowrap;font-size:1rem;padding:0.65rem 1.3rem">✨ New Article</a>
   {% endif %}
 </div>
+
+<!-- Announcements -->
+{% if announcements %}
+<section style="margin-bottom:1.8rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.6rem">
+    <h3 style="margin:0">📢 Announcements</h3>
+    <a href="{{ url_for('announcements') }}" style="font-size:0.85rem">View all →</a>
+  </div>
+  {% for ann in announcements %}
+  <div class="ann-card">
+    <h4>{% if ann.is_pinned %}📌 {% endif %}{{ ann.title }}</h4>
+    <p>{{ ann.body }}</p>
+    <small style="color:var(--pico-muted-color)">{{ ann.author }} · {{ ann.created_at[:10] }}</small>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
 
 {% if pinned %}
 <section>
   <h3>📌 Pinned Articles</h3>
   {% for a in pinned %}
   <div class="article-card">
-    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a> <span class="pinned-badge">Pinned</span></h3>
+    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a>
+      {% if a.is_private %}<span class="private-badge">🔒 Private</span>{% endif %}
+    </h3>
     <div class="article-meta">By {{ a.author }} · {{ a.updated_at[:10] }}</div>
-    {% if a.tags %}
-    <div class="article-tags">
-      {% for tag in a.tags.split(',') %}{% if tag.strip() %}
-        <a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>
-      {% endif %}{% endfor %}
-    </div>
-    {% endif %}
+    {% if a.tags %}<div class="article-tags">{% for tag in a.tags.split(',') %}{% if tag.strip() %}<a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>{% endif %}{% endfor %}</div>{% endif %}
   </div>
   {% endfor %}
 </section>
@@ -35,15 +49,12 @@
   <h3>🕓 Recently Edited</h3>
   {% for a in recent_edited %}
   <div class="article-card">
-    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a>{% if a.is_pinned %} <span class="pinned-badge">Pinned</span>{% endif %}</h3>
+    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a>
+      {% if a.is_pinned %}<span class="pinned-badge">📌</span>{% endif %}
+      {% if a.is_private %}<span class="private-badge">🔒</span>{% endif %}
+    </h3>
     <div class="article-meta">By {{ a.author }} · {{ a.updated_at[:10] }}</div>
-    {% if a.tags %}
-    <div class="article-tags">
-      {% for tag in a.tags.split(',') %}{% if tag.strip() %}
-        <a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>
-      {% endif %}{% endfor %}
-    </div>
-    {% endif %}
+    {% if a.tags %}<div class="article-tags">{% for tag in a.tags.split(',') %}{% if tag.strip() %}<a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>{% endif %}{% endfor %}</div>{% endif %}
   </div>
   {% endfor %}
   {% if not recent_edited %}

@@ -1,12 +1,32 @@
 {% extends "base.html" %}
-{% block title %}{% if article %}Edit: {{ article.title }}{% else %}New Article{% endif %} — Knowledge Base{% endblock %}
+{% block title %}{% if article %}Edit: {{ article.title }}{% else %}New Article{% endif %} — AczWiki{% endblock %}
 {% block content %}
 <h2>{% if article %}✏️ Edit Article{% else %}✨ New Article{% endif %}</h2>
 
-<form method="post" id="article-form">
-  <label>Title
-    <input type="text" name="title" value="{{ article.title if article else '' }}" required placeholder="Article title…">
-  </label>
+<form method="post" id="article-form" enctype="multipart/form-data">
+
+  <div style="display:grid;grid-template-columns:1fr auto;gap:1rem;align-items:start;margin-bottom:0.5rem">
+    <label style="margin:0">Title
+      <input type="text" name="title" value="{{ article.title if article else '' }}" required placeholder="Article title…">
+    </label>
+    <label style="margin:0">Type
+      <select name="type" id="type-select" onchange="toggleTypeFields()">
+        <option value="article" {% if not article or article.type == 'article' %}selected{% endif %}>📄 Article</option>
+        <option value="snippet" {% if article and article.type == 'snippet' %}selected{% endif %}>💻 Code Snippet</option>
+      </select>
+    </label>
+  </div>
+
+  <div id="language-row" style="display:{% if article and article.type == 'snippet' %}block{% else %}none{% endif %};margin-bottom:0.8rem">
+    <label>Language
+      <select name="language">
+        {% set langs = ['python','javascript','cpp','csharp','sql','bash','html','css','json','other'] %}
+        {% for l in langs %}
+          <option value="{{ l }}" {% if article and article.language == l %}selected{% endif %}>{{ l|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
 
   <label>Folder
     <select name="folder_id">
@@ -21,21 +41,42 @@
   <label>Tags <small style="color:var(--pico-muted-color)">(comma-separated)</small>
     <input type="text" name="tags" id="tags-input" value="{{ article.tags if article else '' }}" placeholder="e.g. python, tutorial, api">
   </label>
-
-  <div id="tag-suggestions" style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.8rem">
+  <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.8rem">
     {% for tag in tags.keys() %}
       <span class="tag-chip" style="cursor:pointer" onclick="addTag('{{ tag }}')">{{ tag }}</span>
     {% endfor %}
   </div>
 
-  <label>Content</label>
-  <div id="editor-container">
-    <div id="quill-editor" style="min-height:400px"></div>
+  <div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.8rem">
+    <label style="display:flex;align-items:center;gap:0.4rem;margin:0;cursor:pointer">
+      <input type="checkbox" name="is_private" role="switch" {% if article and article.is_private %}checked{% endif %} style="margin:0">
+      🔒 Make Private <small style="color:var(--pico-muted-color)">(only visible to you and Admins)</small>
+    </label>
   </div>
-  <input type="hidden" name="body" id="body-hidden">
+
+  <!-- Rich text editor (article) -->
+  <div id="rich-editor-section">
+    <label>Content</label>
+    <div id="editor-container" style="border:1px solid var(--pico-muted-border-color);border-radius:6px;overflow:hidden">
+      <div id="quill-editor" style="min-height:400px"></div>
+    </div>
+    <input type="hidden" name="body" id="body-hidden">
+
+    <!-- Image upload helper for editor -->
+    <div style="margin-top:0.5rem;font-size:0.83rem;color:var(--pico-muted-color)">
+      Upload an image to embed it: <input type="file" id="inline-img-upload" accept="image/*" style="font-size:0.83rem;display:inline">
+      <button type="button" id="insert-img-btn" class="outline secondary" style="font-size:0.8rem;padding:0.2rem 0.6rem;margin-left:0.4rem">Insert Image</button>
+    </div>
+  </div>
+
+  <!-- Code editor (snippet) -->
+  <div id="code-editor-section" style="display:{% if article and article.type == 'snippet' %}block{% else %}none{% endif %}">
+    <label>Code</label>
+    <textarea name="code_body" id="code-body" rows="20" style="font-family:monospace;font-size:0.9rem;white-space:pre">{{ article.body if article and article.type == 'snippet' else '' }}</textarea>
+  </div>
 
   <div style="display:flex;gap:0.8rem;margin-top:1.2rem;flex-wrap:wrap">
-    <button type="submit" id="save-btn">💾 Save Article</button>
+    <button type="submit" id="save-btn">💾 Save</button>
     <a href="{{ url_for('article_view', article_id=article.id) if article else url_for('index') }}" role="button" class="outline secondary">Cancel</a>
   </div>
 </form>
@@ -45,32 +86,116 @@
 <link href="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.js"></script>
 <script>
-  const quill = new Quill('#quill-editor', {
-    theme: 'snow',
-    modules: {
-      toolbar: [
-        [{ 'header': [1,2,3,false] }],
-        ['bold','italic','underline','strike'],
-        [{ 'color': [] },{ 'background': [] }],
-        [{ 'list': 'ordered' },{ 'list': 'bullet' }],
-        [{ 'indent': '-1' },{ 'indent': '+1' }],
-        ['blockquote','code-block'],
-        ['link','image'],
-        ['clean']
-      ]
+  // ── Quill setup ────────────────────────────────────────────────────────────
+  let quill = null;
+
+  function initQuill() {
+    if (quill) return;
+    quill = new Quill('#quill-editor', {
+      theme: 'snow',
+      modules: {
+        toolbar: {
+          container: [
+            [{ header: [1,2,3,false] }],
+            ['bold','italic','underline','strike'],
+            [{ color: [] },{ background: [] }],
+            [{ list: 'ordered' },{ list: 'bullet' }],
+            [{ indent: '-1' },{ indent: '+1' }],
+            ['blockquote','code-block'],
+            ['link','image'],
+            ['clean']
+          ],
+          handlers: { image: imageUploadHandler }
+        }
+      }
+    });
+
+    // Load existing content
+    const existing = {{ (article.body if article and article.type != 'snippet' else '')|tojson }};
+    if (existing) {
+      quill.clipboard.dangerouslyPasteHTML(0, existing);
+      // Clear undo history after loading
+      quill.history.clear();
+    }
+
+    // Dark mode
+    if (localStorage.getItem('theme') === 'dark') {
+      const tb = document.querySelector('.ql-toolbar');
+      if (tb) tb.style.background = '#2d2d2d';
+    }
+  }
+
+  // ── Image upload handler ────────────────────────────────────────────────────
+  function imageUploadHandler() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.click();
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      if (!file) return;
+      uploadImageFile(file, url => {
+        const range = quill.getSelection(true);
+        quill.insertEmbed(range.index, 'image', url, 'user');
+        quill.setSelection(range.index + 1);
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // ── Inline image insert button ─────────────────────────────────────────
+    document.getElementById('insert-img-btn').addEventListener('click', () => {
+      const fileInput = document.getElementById('inline-img-upload');
+      const file = fileInput.files[0];
+      if (!file) { alert('Please select an image first.'); return; }
+      uploadImageFile(file, url => {
+        if (quill) {
+          const range = quill.getSelection(true) || { index: quill.getLength() };
+          quill.insertEmbed(range.index, 'image', url, 'user');
+          quill.setSelection(range.index + 1);
+        }
+        fileInput.value = '';
+      });
+    });
+
+    // ── Form submit ────────────────────────────────────────────────────────
+    document.getElementById('article-form').addEventListener('submit', function(e) {
+      const type = document.getElementById('type-select').value;
+      if (type === 'article') {
+        if (!quill) { alert('Editor not ready. Please wait.'); e.preventDefault(); return; }
+        document.getElementById('body-hidden').value = quill.root.innerHTML;
+      } else {
+        document.getElementById('body-hidden').value = document.getElementById('code-body').value;
+      }
+    });
+
+    // Init Quill for article type
+    if (document.getElementById('type-select').value === 'article') {
+      initQuill();
     }
   });
 
-  // Load existing content
-  const existing = {{ (article.body if article else '')|tojson }};
-  if (existing) {
-    quill.root.innerHTML = existing;
+  async function uploadImageFile(file, callback) {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/upload_image', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.url) callback(data.url);
+      else alert('Upload failed: ' + (data.error || 'unknown'));
+    } catch(err) {
+      alert('Upload failed: ' + err.message);
+    }
   }
 
-  // On submit, copy Quill HTML to hidden input
-  document.getElementById('article-form').addEventListener('submit', function(e) {
-    document.getElementById('body-hidden').value = quill.root.innerHTML;
-  });
+  function toggleTypeFields() {
+    const type = document.getElementById('type-select').value;
+    const isSnippet = type === 'snippet';
+    document.getElementById('rich-editor-section').style.display = isSnippet ? 'none' : 'block';
+    document.getElementById('code-editor-section').style.display = isSnippet ? 'block' : 'none';
+    document.getElementById('language-row').style.display = isSnippet ? 'block' : 'none';
+    if (!isSnippet) initQuill();
+  }
 
   function addTag(tag) {
     const input = document.getElementById('tags-input');
@@ -79,11 +204,6 @@
       current.push(tag);
       input.value = current.join(', ');
     }
-  }
-
-  // Apply dark theme to Quill if dark mode is on
-  if (localStorage.getItem('theme') === 'dark') {
-    document.querySelector('.ql-toolbar')?.style.setProperty('background','#2d2d2d');
   }
 </script>
 {% endblock %}

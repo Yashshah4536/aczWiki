@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Shared Files — AczWiki{% endblock %}
+{% block content %}
+<h2>📁 Shared Files</h2>
+
+<!-- Upload form -->
+<article>
+  <h3 style="margin-top:0">⬆️ Upload File</h3>
+  <form method="post" enctype="multipart/form-data">
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem">
+      <label>File <small style="color:var(--pico-muted-color)">(PDF, image, docx, xlsx, zip — max 20 MB)</small>
+        <input type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.zip,.txt,.csv">
+      </label>
+      <label>Visibility
+        <select name="visibility">
+          <option value="everyone">🌐 Everyone</option>
+          <option value="private">🔒 Only Me + Admins</option>
+        </select>
+      </label>
+    </div>
+    <label>Description <small style="color:var(--pico-muted-color)">(optional)</small>
+      <input type="text" name="description" placeholder="Brief description of this file…">
+    </label>
+    <button type="submit">Upload</button>
+  </form>
+</article>
+
+<!-- File table -->
+<div class="overflow-auto">
+  <table>
+    <thead>
+      <tr><th>File</th><th>Description</th><th>Uploaded By</th><th>Date</th><th>Visibility</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr>
+        <td>
+          <a href="{{ url_for('serve_upload', filename=f.stored_name) }}" target="_blank" download="{{ f.original_name }}">
+            {{ f.original_name }}
+          </a>
+        </td>
+        <td style="font-size:0.85rem;color:var(--pico-muted-color)">{{ f.description or '—' }}</td>
+        <td style="font-size:0.85rem">{{ f.uploader }}</td>
+        <td style="font-size:0.85rem;white-space:nowrap">{{ f.uploaded_at[:10] }}</td>
+        <td>
+          {% if f.visibility == 'private' %}
+            <span style="font-size:0.8rem;color:#7c3aed">🔒 Private</span>
+          {% else %}
+            <span style="font-size:0.8rem;color:#059669">🌐 Everyone</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if f.uploaded_by == session.user_id or session.role == 'Admin' %}
+          <form action="{{ url_for('file_delete', file_id=f.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete this file?')">
+            <button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.1rem 0.5rem">🗑️</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not files %}
+      <tr><td colspan="6" style="text-align:center;color:var(--pico-muted-color)">No shared files yet.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
