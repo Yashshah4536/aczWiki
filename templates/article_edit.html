@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{% if article %}Edit: {{ article.title }}{% else %}New Article{% endif %} — Knowledge Base{% endblock %}
+{% block content %}
+<h2>{% if article %}✏️ Edit Article{% else %}✨ New Article{% endif %}</h2>
+
+<form method="post" id="article-form">
+  <label>Title
+    <input type="text" name="title" value="{{ article.title if article else '' }}" required placeholder="Article title…">
+  </label>
+
+  <label>Folder
+    <select name="folder_id">
+      <option value="">— No folder —</option>
+      {% for f in folders recursive %}
+        <option value="{{ f.id }}" {% if article and article.folder_id == f.id %}selected{% endif %}>{{ '　' * loop.depth0 }}{{ f.name }}</option>
+        {% if f.children %}{{ loop(f.children) }}{% endif %}
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>Tags <small style="color:var(--pico-muted-color)">(comma-separated)</small>
+    <input type="text" name="tags" id="tags-input" value="{{ article.tags if article else '' }}" placeholder="e.g. python, tutorial, api">
+  </label>
+
+  <div id="tag-suggestions" style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.8rem">
+    {% for tag in tags.keys() %}
+      <span class="tag-chip" style="cursor:pointer" onclick="addTag('{{ tag }}')">{{ tag }}</span>
+    {% endfor %}
+  </div>
+
+  <label>Content</label>
+  <div id="editor-container">
+    <div id="quill-editor" style="min-height:400px"></div>
+  </div>
+  <input type="hidden" name="body" id="body-hidden">
+
+  <div style="display:flex;gap:0.8rem;margin-top:1.2rem;flex-wrap:wrap">
+    <button type="submit" id="save-btn">💾 Save Article</button>
+    <a href="{{ url_for('article_view', article_id=article.id) if article else url_for('index') }}" role="button" class="outline secondary">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.js"></script>
+<script>
+  const quill = new Quill('#quill-editor', {
+    theme: 'snow',
+    modules: {
+      toolbar: [
+        [{ 'header': [1,2,3,false] }],
+        ['bold','italic','underline','strike'],
+        [{ 'color': [] },{ 'background': [] }],
+        [{ 'list': 'ordered' },{ 'list': 'bullet' }],
+        [{ 'indent': '-1' },{ 'indent': '+1' }],
+        ['blockquote','code-block'],
+        ['link','image'],
+        ['clean']
+      ]
+    }
+  });
+
+  // Load existing content
+  const existing = {{ (article.body if article else '')|tojson }};
+  if (existing) {
+    quill.root.innerHTML = existing;
+  }
+
+  // On submit, copy Quill HTML to hidden input
+  document.getElementById('article-form').addEventListener('submit', function(e) {
+    document.getElementById('body-hidden').value = quill.root.innerHTML;
+  });
+
+  function addTag(tag) {
+    const input = document.getElementById('tags-input');
+    const current = input.value.split(',').map(t => t.trim()).filter(Boolean);
+    if (!current.includes(tag)) {
+      current.push(tag);
+      input.value = current.join(', ');
+    }
+  }
+
+  // Apply dark theme to Quill if dark mode is on
+  if (localStorage.getItem('theme') === 'dark') {
+    document.querySelector('.ql-toolbar')?.style.setProperty('background','#2d2d2d');
+  }
+</script>
+{% endblock %}

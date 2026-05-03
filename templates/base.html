@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Knowledge Base{% endblock %}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    :root { --sidebar-width: 260px; }
+    body { margin: 0; }
+
+    /* Navbar */
+    nav.topnav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.6rem 1.2rem;
+      background: var(--pico-background-color);
+      border-bottom: 1px solid var(--pico-muted-border-color);
+    }
+    nav.topnav .brand { font-weight: 700; font-size: 1.1rem; white-space: nowrap; text-decoration: none; }
+    nav.topnav form.search { flex: 1; margin: 0; }
+    nav.topnav form.search input { margin: 0; }
+    nav.topnav .nav-actions { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+    nav.topnav .nav-actions a, nav.topnav .nav-actions button { margin: 0; padding: 0.3rem 0.7rem; font-size: 0.85rem; }
+
+    /* Layout */
+    .layout { display: flex; min-height: calc(100vh - 60px); }
+    .sidebar {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      padding: 1rem;
+      border-right: 1px solid var(--pico-muted-border-color);
+      overflow-y: auto;
+      font-size: 0.88rem;
+    }
+    .main-content { flex: 1; padding: 1.5rem 2rem; overflow-x: hidden; }
+
+    /* Sidebar elements */
+    .sidebar h4 { margin: 0.5rem 0 0.3rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pico-muted-color); }
+    .folder-tree ul { list-style: none; padding-left: 0.9rem; margin: 0; }
+    .folder-tree > ul { padding-left: 0; }
+    .folder-tree li { margin: 0.15rem 0; }
+    .folder-tree a { text-decoration: none; color: inherit; display: block; padding: 0.15rem 0.3rem; border-radius: 4px; }
+    .folder-tree a:hover { background: var(--pico-muted-border-color); }
+    .tag-cloud { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+    .tag-chip { font-size: 0.78rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--pico-primary-background); color: var(--pico-primary); text-decoration: none; border: 1px solid var(--pico-primary-border); }
+    .tag-chip:hover { opacity: 0.8; }
+
+    /* Articles */
+    .article-card { border: 1px solid var(--pico-muted-border-color); border-radius: 8px; padding: 1rem; margin-bottom: 0.8rem; }
+    .article-card h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+    .article-card h3 a { text-decoration: none; }
+    .article-meta { font-size: 0.8rem; color: var(--pico-muted-color); }
+    .article-tags { margin-top: 0.4rem; }
+
+    /* Folder admin actions */
+    .folder-actions { display: flex; gap: 0.3rem; align-items: center; }
+    .folder-actions form { margin: 0; }
+    .folder-actions button { font-size: 0.7rem; padding: 0.1rem 0.4rem; margin: 0; }
+
+    /* Flash messages */
+    .flash-messages { margin-bottom: 1rem; }
+    .flash-messages p { padding: 0.6rem 1rem; border-radius: 6px; margin: 0.3rem 0; }
+    .flash-messages p.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .flash-messages p.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+    /* Article body */
+    .article-body img { max-width: 100%; }
+    .article-body { line-height: 1.7; }
+    .ql-editor { min-height: 400px; }
+
+    /* Quill editor container */
+    #editor-container { border: 1px solid var(--pico-muted-border-color); border-radius: 6px; overflow: hidden; }
+
+    /* Version history */
+    .version-card { border: 1px solid var(--pico-muted-border-color); border-radius: 6px; padding: 0.8rem 1rem; margin-bottom: 0.6rem; display: flex; align-items: center; justify-content: space-between; }
+
+    /* Comments */
+    .comment { border-left: 3px solid var(--pico-muted-border-color); padding: 0.5rem 0.8rem; margin: 0.5rem 0; }
+    .comment .comment-meta { font-size: 0.8rem; color: var(--pico-muted-color); margin-bottom: 0.3rem; }
+
+    /* Attachments */
+    .attachment-list { list-style: none; padding: 0; }
+    .attachment-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-bottom: 1px solid var(--pico-muted-border-color); }
+
+    /* Pinned badge */
+    .pinned-badge { font-size: 0.72rem; background: #fff3cd; color: #856404; border: 1px solid #ffc107; padding: 0.1rem 0.4rem; border-radius: 4px; }
+
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main-content { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  {% if session.user_id %}
+  <nav class="topnav">
+    <a href="{{ url_for('index') }}" class="brand">📚 Knowledge Base</a>
+    <form class="search" action="{{ url_for('search') }}" method="get">
+      <input type="search" name="q" placeholder="Search articles…" value="{{ request.args.get('q','') }}" autocomplete="off">
+    </form>
+    <div class="nav-actions">
+      {% if session.role in ('Admin','Editor') %}
+        <a href="{{ url_for('article_new') }}" role="button" class="outline">+ New Article</a>
+      {% endif %}
+      {% if session.role == 'Admin' %}
+        <a href="{{ url_for('admin_users') }}" role="button" class="outline secondary">Users</a>
+      {% endif %}
+      <span style="font-size:0.85rem">{{ session.username }} <small>({{ session.role }})</small></span>
+      <a href="{{ url_for('logout') }}" role="button" class="secondary outline">Logout</a>
+      <button id="theme-toggle" class="outline secondary" title="Toggle dark mode" style="padding:0.3rem 0.6rem;">🌙</button>
+    </div>
+  </nav>
+  {% endif %}
+
+  <div class="{% if session.user_id %}layout{% endif %}">
+    {% if session.user_id %}
+    <aside class="sidebar">
+      {% if session.role == 'Admin' %}
+      <details>
+        <summary><h4 style="display:inline">📁 New Folder</h4></summary>
+        <form action="{{ url_for('folder_create') }}" method="post" style="margin-top:0.4rem">
+          <input type="text" name="name" placeholder="Folder name" required style="margin-bottom:0.3rem;font-size:0.85rem">
+          <select name="parent_id" style="font-size:0.85rem;margin-bottom:0.3rem">
+            <option value="">— Root —</option>
+            {% for f in folders recursive %}
+              <option value="{{ f.id }}">{{ '&nbsp;' * loop.depth0 * 2 }}{{ f.name }}</option>
+              {% if f.children %}{{ loop(f.children) }}{% endif %}
+            {% endfor %}
+          </select>
+          <button type="submit" style="font-size:0.8rem;padding:0.3rem 0.6rem">Create</button>
+        </form>
+      </details>
+      {% endif %}
+
+      <h4>📂 Folders</h4>
+      <div class="folder-tree">
+        <ul>
+          {% macro render_folder(f) %}
+          <li>
+            <div class="folder-actions">
+              <a href="{{ url_for('folder_view', folder_id=f.id) }}">📁 {{ f.name }}</a>
+              {% if session.role == 'Admin' %}
+              <form action="{{ url_for('folder_rename', folder_id=f.id) }}" method="post" style="display:inline" onsubmit="var n=prompt('New name:',{{ f.name|tojson }});if(!n)return false;this.querySelector('input').value=n;">
+                <input type="hidden" name="name" value="{{ f.name }}">
+                <button type="submit" class="outline secondary" title="Rename">✏️</button>
+              </form>
+              <form action="{{ url_for('folder_delete', folder_id=f.id) }}" method="post" style="display:inline" onsubmit="return confirm('Delete folder?')">
+                <button type="submit" class="outline secondary" title="Delete">🗑️</button>
+              </form>
+              {% endif %}
+            </div>
+            {% if f.children %}
+            <ul>{% for child in f.children %}{{ render_folder(child) }}{% endfor %}</ul>
+            {% endif %}
+          </li>
+          {% endmacro %}
+          {% for f in folders %}{{ render_folder(f) }}{% endfor %}
+        </ul>
+      </div>
+
+      <h4 style="margin-top:1.2rem">🏷️ Tags</h4>
+      <div class="tag-cloud">
+        {% for tag, count in tags.items() %}
+          <a href="{{ url_for('tag_view', tag=tag) }}" class="tag-chip">{{ tag }} <small>({{ count }})</small></a>
+        {% endfor %}
+        {% if not tags %}<small style="color:var(--pico-muted-color)">No tags yet.</small>{% endif %}
+      </div>
+    </aside>
+    {% endif %}
+
+    <main class="main-content">
+      {% if get_flashed_messages() %}
+      <div class="flash-messages">
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+          <p class="{{ category }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script>
+    // Dark mode
+    const toggle = document.getElementById('theme-toggle');
+    const html = document.documentElement;
+    const saved = localStorage.getItem('theme') || 'light';
+    html.setAttribute('data-theme', saved);
+    if (toggle) {
+      toggle.textContent = saved === 'dark' ? '☀️' : '🌙';
+      toggle.addEventListener('click', () => {
+        const current = html.getAttribute('data-theme');
+        const next = current === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        toggle.textContent = next === 'dark' ? '☀️' : '🌙';
+      });
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

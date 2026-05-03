@@ -1,0 +1,20 @@
+Build a LAN-based internal knowledge base web app using Python Flask and SQLite. It should run on one PC and be accessible to all other PCs on the same LAN via browser — no installation required on client machines.
+Keep the file structure minimal: app.py (full Flask backend), database.py (all DB logic), requirements.txt, and templates/ folder for HTML. Do not create unnecessary files.
+Features to implement:
+
+Auth — simple username/password login. Three roles: Admin, Editor, Viewer. Store users in SQLite.
+Articles — create, edit, delete articles with a rich text editor (use Quill.js via CDN). Each article has: title, body (rich text), folder/category, tags (comma-separated, shown as chips), created_by, created_at, updated_by, updated_at.
+Folder tree — nested folder structure in a left sidebar. Clicking a folder filters articles inside it. Folders can be created, renamed, deleted by Admins.
+Tags — each article can have multiple tags. Clicking a tag filters all articles with that tag. Show all tags as a tag cloud on the sidebar.
+Search — real-time full-text search bar at the top. Searches across title, body, and tags. Results appear instantly using SQLite FTS5.
+Version history — every save creates a new version snapshot in the DB. Users can view previous versions and restore them.
+Homepage — shows: pinned articles, recently edited, recently viewed (stored in session).
+File attachments — allow uploading images and PDFs inside articles. Store in a local uploads/ folder. Serve via Flask.
+Comments — each article has a comments section at the bottom. Users can post and delete their own comments.
+Export to PDF — button on each article to export the content as a PDF using weasyprint.
+Dark mode — toggle button in navbar, preference saved in localStorage.
+UI — use Pico CSS via CDN for clean minimal styling. Left sidebar with folder tree + tag cloud. Top navbar with search bar and user info. Main content area for article display/edit.
+LAN access — run Flask with host='0.0.0.0' and port=5000 so it's accessible on the LAN. Print the local IP on startup.
+First-run setup — if no users exist in DB, auto-create a default admin user (username: admin, password: admin123) and print it to console.
+
+Use SQLite FTS5 for search. Use Quill.js for the rich text editor loaded via CDN. Do not use React or any frontend build tools. Keep everything server-rendered with minimal JavaScript only where needed (search, dark mode, editor).

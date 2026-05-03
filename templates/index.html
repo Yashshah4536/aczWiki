@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Home — Knowledge Base{% endblock %}
+{% block content %}
+<h2>Home</h2>
+
+{% if pinned %}
+<section>
+  <h3>📌 Pinned Articles</h3>
+  {% for a in pinned %}
+  <div class="article-card">
+    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a> <span class="pinned-badge">Pinned</span></h3>
+    <div class="article-meta">By {{ a.author }} · {{ a.updated_at[:10] }}</div>
+    {% if a.tags %}
+    <div class="article-tags">
+      {% for tag in a.tags.split(',') %}{% if tag.strip() %}
+        <a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>
+      {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <h3>🕓 Recently Edited</h3>
+  {% for a in recent_edited %}
+  <div class="article-card">
+    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a>{% if a.is_pinned %} <span class="pinned-badge">Pinned</span>{% endif %}</h3>
+    <div class="article-meta">By {{ a.author }} · {{ a.updated_at[:10] }}</div>
+    {% if a.tags %}
+    <div class="article-tags">
+      {% for tag in a.tags.split(',') %}{% if tag.strip() %}
+        <a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>
+      {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if not recent_edited %}
+    <p style="color:var(--pico-muted-color)">No articles yet. <a href="{{ url_for('article_new') }}">Create one!</a></p>
+  {% endif %}
+</section>
+
+{% if recently_viewed %}
+<section>
+  <h3>👁️ Recently Viewed</h3>
+  {% for a in recently_viewed %}
+  <div class="article-card">
+    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a></h3>
+    <div class="article-meta">{{ a.updated_at[:10] }}</div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

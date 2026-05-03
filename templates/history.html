@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}History: {{ article.title }} — Knowledge Base{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+  <h2 style="margin:0">🕓 Version History</h2>
+  <a href="{{ url_for('article_view', article_id=article.id) }}" role="button" class="outline secondary">← Back to Article</a>
+</div>
+<p style="color:var(--pico-muted-color)">Article: <strong>{{ article.title }}</strong> · {{ versions|length }} version(s)</p>
+
+{% for v in versions %}
+<div class="version-card">
+  <div>
+    <strong>Version {{ loop.revindex }}</strong>
+    <div style="font-size:0.85rem;color:var(--pico-muted-color)">
+      Saved by {{ v.username or 'unknown' }} on {{ v.saved_at[:16].replace('T',' ') }}
+    </div>
+    {% if v.tags %}<div style="margin-top:0.3rem;font-size:0.82rem">Tags: {{ v.tags }}</div>{% endif %}
+  </div>
+  <div style="display:flex;gap:0.5rem">
+    <a href="{{ url_for('article_history', article_id=article.id) }}?preview={{ v.id }}" role="button" class="outline secondary" style="font-size:0.85rem">Preview</a>
+    {% if session.role in ('Admin','Editor') and not loop.first %}
+    <form action="{{ url_for('article_restore', article_id=article.id, version_id=v.id) }}" method="post" style="margin:0" onsubmit="return confirm('Restore this version?')">
+      <button type="submit" class="outline" style="font-size:0.85rem">Restore</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if request.args.get('preview') == v.id|string %}
+<div style="border:2px solid var(--pico-primary);border-radius:8px;padding:1rem;margin:-0.5rem 0 1rem">
+  <h4>Preview: {{ v.title }}</h4>
+  <div class="article-body">{{ v.body|safe }}</div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if not versions %}
+  <p style="color:var(--pico-muted-color)">No version history yet.</p>
+{% endif %}
+{% endblock %}

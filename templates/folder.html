@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ folder.name }} — Knowledge Base{% endblock %}
+{% block content %}
+<h2>📁 {{ folder.name }}</h2>
+<p style="color:var(--pico-muted-color)">{{ articles|length }} article(s) in this folder.</p>
+
+{% for a in articles %}
+<div class="article-card">
+  <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a>{% if a.is_pinned %} <span class="pinned-badge">Pinned</span>{% endif %}</h3>
+  <div class="article-meta">By {{ a.author }} · {{ a.updated_at[:10] }}</div>
+  {% if a.tags %}
+  <div class="article-tags">
+    {% for tag in a.tags.split(',') %}{% if tag.strip() %}
+      <a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>
+    {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% if not articles %}
+  <p style="color:var(--pico-muted-color)">No articles in this folder yet.</p>
+{% endif %}
+{% endblock %}

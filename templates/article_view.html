@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ article.title }} — Knowledge Base{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem">
+  <div>
+    <h2 style="margin:0">{{ article.title }}{% if article.is_pinned %} <span class="pinned-badge">Pinned</span>{% endif %}</h2>
+    <div class="article-meta">
+      Created by {{ article.author }} on {{ article.created_at[:10] }}
+      {% if article.updater %} · Last updated by {{ article.updater }} on {{ article.updated_at[:10] }}{% endif %}
+    </div>
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+    {% if session.role in ('Admin','Editor') %}
+      <a href="{{ url_for('article_edit', article_id=article.id) }}" role="button" class="outline">✏️ Edit</a>
+    {% endif %}
+    <a href="{{ url_for('article_history', article_id=article.id) }}" role="button" class="outline secondary">🕓 History</a>
+    <a href="{{ url_for('article_pdf', article_id=article.id) }}" role="button" class="outline secondary">📄 PDF</a>
+    {% if session.role == 'Admin' %}
+      <form action="{{ url_for('article_pin', article_id=article.id) }}" method="post" style="margin:0">
+        <button type="submit" class="outline secondary">{% if article.is_pinned %}📌 Unpin{% else %}📌 Pin{% endif %}</button>
+      </form>
+      <form action="{{ url_for('article_delete', article_id=article.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete this article?')">
+        <button type="submit" class="outline secondary" style="color:#dc3545;border-color:#dc3545">🗑️ Delete</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if article.tags %}
+<div class="article-tags" style="margin-bottom:1rem">
+  {% for tag in article.tags.split(',') %}{% if tag.strip() %}
+    <a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>
+  {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+<div class="article-body">
+  {{ article.body|safe }}
+</div>
+
+<!-- Attachments -->
+<section style="margin-top:2rem">
+  <h3>📎 Attachments</h3>
+  {% if attachments %}
+  <ul class="attachment-list">
+    {% for att in attachments %}
+    <li>
+      <a href="{{ url_for('serve_upload', filename=att.filename) }}" target="_blank">{{ att.original_name }}</a>
+      <small style="color:var(--pico-muted-color)">{{ att.uploaded_at[:10] }}</small>
+      {% if session.role in ('Admin','Editor') %}
+      <form action="{{ url_for('delete_attachment', attachment_id=att.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete attachment?')">
+        <button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.1rem 0.4rem">🗑️</button>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    <p style="color:var(--pico-muted-color);font-size:0.9rem">No attachments.</p>
+  {% endif %}
+
+  {% if session.role in ('Admin','Editor') %}
+  <form action="{{ url_for('upload_attachment', article_id=article.id) }}" method="post" enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;flex-wrap:wrap">
+    <input type="file" name="file" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf" style="margin:0;flex:1">
+    <button type="submit" class="outline" style="white-space:nowrap">Upload File</button>
+  </form>
+  {% endif %}
+</section>
+
+<!-- Comments -->
+<section id="comments" style="margin-top:2rem">
+  <h3>💬 Comments ({{ comments|length }})</h3>
+  {% for c in comments %}
+  <div class="comment">
+    <div class="comment-meta"><strong>{{ c.username }}</strong> · {{ c.created_at[:16].replace('T',' ') }}</div>
+    <div>{{ c.body }}</div>
+    {% if session.user_id == c.user_id or session.role == 'Admin' %}
+    <form action="{{ url_for('comment_delete', comment_id=c.id) }}" method="post" style="margin-top:0.3rem" onsubmit="return confirm('Delete comment?')">
+      <button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.1rem 0.5rem">Delete</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if not comments %}
+    <p style="color:var(--pico-muted-color);font-size:0.9rem">No comments yet.</p>
+  {% endif %}
+
+  <form action="{{ url_for('comment_add', article_id=article.id) }}" method="post" style="margin-top:1rem">
+    <textarea name="body" placeholder="Write a comment…" rows="3" required style="margin-bottom:0.4rem"></textarea>
+    <button type="submit">Post Comment</button>
+  </form>
+</section>
+{% endblock %}

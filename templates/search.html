@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Search — Knowledge Base{% endblock %}
+{% block content %}
+<h2>Search Results{% if q %} for "{{ q }}"{% endif %}</h2>
+
+{% if q %}
+  <p>{{ results|length }} result(s) found.</p>
+  {% for a in results %}
+  <div class="article-card">
+    <h3><a href="{{ url_for('article_view', article_id=a.id) }}">{{ a.title }}</a></h3>
+    <div class="article-meta">By {{ a.author }} · {{ a.updated_at[:10] }}</div>
+    {% if a.tags %}
+    <div class="article-tags">
+      {% for tag in a.tags.split(',') %}{% if tag.strip() %}
+        <a href="{{ url_for('tag_view', tag=tag.strip()) }}" class="tag-chip">{{ tag.strip() }}</a>
+      {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if not results %}
+    <p style="color:var(--pico-muted-color)">No articles matched your search.</p>
+  {% endif %}
+{% else %}
+  <p style="color:var(--pico-muted-color)">Enter a search term above.</p>
+{% endif %}
+{% endblock %}
