@@ -3,18 +3,28 @@
 {% block content %}
 <h2>👤 My Profile</h2>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem;flex-wrap:wrap">
+
+  <!-- Account info -->
   <article style="margin:0">
     <h3 style="margin-top:0">Account Info</h3>
     <table>
-      <tr><th style="width:40%">Username</th><td><strong>{{ user.username }}</strong></td></tr>
+      <tr><th style="width:45%">Username</th><td><strong>{{ user.username }}</strong></td></tr>
       <tr><th>Role</th><td>{{ user.role }}</td></tr>
       <tr><th>Member since</th><td>{{ user.created_at[:10] }}</td></tr>
       <tr><th>Articles written</th><td>{{ article_count }}</td></tr>
+      <tr><th>Snippets created</th><td>{{ snippet_count }}</td></tr>
       <tr><th>Comments posted</th><td>{{ comment_count }}</td></tr>
+    </table>
+
+    <h4 style="margin-top:1.2rem">🕐 Timesheet This Month</h4>
+    <table>
+      <tr><th style="width:45%">Days logged</th><td><strong>{{ ts_days }}</strong></td></tr>
+      <tr><th>Total hours</th><td><strong>{{ ts_hours }}h</strong></td></tr>
     </table>
   </article>
 
+  <!-- Change password -->
   <article style="margin:0">
     <h3 style="margin-top:0">🔑 Change Password</h3>
     <form method="post">
@@ -30,5 +40,6 @@
       <button type="submit">Update Password</button>
     </form>
   </article>
+
 </div>
 {% endblock %}

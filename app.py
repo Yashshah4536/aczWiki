@@ -1035,6 +1035,23 @@ def admin_user_role(user_id):
     return redirect(url_for('admin_users'))
 
 
+@app.route('/admin/users/<int:user_id>/reset_password', methods=['POST'])
+@login_required
+@role_required('Admin')
+def admin_user_reset_password(user_id):
+    if user_id == session['user_id']:
+        flash('Use the Profile page to change your own password.', 'error')
+        return redirect(url_for('admin_users'))
+    conn = get_db()
+    conn.execute("UPDATE users SET password_hash=? WHERE id=?",
+                 (generate_password_hash('changeme123'), user_id))
+    conn.commit()
+    user = conn.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+    conn.close()
+    flash(f'Password for {user["username"]} reset to changeme123.', 'success')
+    return redirect(url_for('admin_users'))
+
+
 # ── Profile ───────────────────────────────────────────────────────────────────
 
 @app.route('/profile', methods=['GET', 'POST'])
@@ -1060,14 +1077,27 @@ def profile():
         conn.close()
         return redirect(url_for('profile'))
     user = conn.execute("SELECT * FROM users WHERE id=?", (session['user_id'],)).fetchone()
-    article_count = conn.execute("SELECT COUNT(*) FROM articles WHERE created_by=?", (session['user_id'],)).fetchone()[0]
-    comment_count = conn.execute("SELECT COUNT(*) FROM comments WHERE user_id=?", (session['user_id'],)).fetchone()[0]
+    uid = session['user_id']
+    article_count = conn.execute("SELECT COUNT(*) FROM articles WHERE created_by=? AND type='article'", (uid,)).fetchone()[0]
+    snippet_count = conn.execute("SELECT COUNT(*) FROM articles WHERE created_by=? AND type='snippet'", (uid,)).fetchone()[0]
+    comment_count = conn.execute("SELECT COUNT(*) FROM comments WHERE user_id=?", (uid,)).fetchone()[0]
+    # Timesheet summary for current month
+    from datetime import date
+    month_prefix = str(date.today())[:7]  # e.g. "2026-05"
+    ts_rows = conn.execute(
+        "SELECT login_time, logout_time FROM timesheets WHERE user_id=? AND date LIKE ?",
+        (uid, f'{month_prefix}%')
+    ).fetchall()
+    ts_days = len(ts_rows)
+    ts_hours = round(sum(calc_hours(r['login_time'], r['logout_time']) for r in ts_rows), 2)
     folders = get_folders_tree(conn)
     tags = get_all_tags(conn)
     snippets = get_snippets(conn)
     conn.close()
     return render_template('profile.html', user=user, article_count=article_count,
-                           comment_count=comment_count, folders=folders, tags=tags, snippets=snippets)
+                           snippet_count=snippet_count, comment_count=comment_count,
+                           ts_days=ts_days, ts_hours=ts_hours,
+                           folders=folders, tags=tags, snippets=snippets)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}User Management — Knowledge Base{% endblock %}
+{% block title %}User Management — AczWiki{% endblock %}
 {% block content %}
 <h2>👥 User Management</h2>
 
 <article>
-  <h3>Add New User</h3>
+  <h3 style="margin-top:0">➕ Create New User</h3>
   <form action="{{ url_for('admin_user_create') }}" method="post" style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:flex-end">
     <label style="flex:1;min-width:140px">Username
-      <input type="text" name="username" required placeholder="username">
+      <input type="text" name="username" required placeholder="username" autocomplete="off">
     </label>
     <label style="flex:1;min-width:140px">Password
-      <input type="password" name="password" required placeholder="password">
+      <input type="password" name="password" required placeholder="password" autocomplete="new-password">
     </label>
     <label style="min-width:120px">Role
       <select name="role">
@@ -23,16 +23,24 @@
   </form>
 </article>
 
-<h3>Existing Users</h3>
+<h3>Existing Users ({{ users|length }})</h3>
 <div class="overflow-auto">
   <table>
     <thead>
-      <tr><th>Username</th><th>Role</th><th>Created</th><th>Actions</th></tr>
+      <tr>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
     </thead>
     <tbody>
       {% for u in users %}
       <tr>
-        <td>{{ u.username }}{% if u.id == session.user_id %} <small>(you)</small>{% endif %}</td>
+        <td>
+          <strong>{{ u.username }}</strong>
+          {% if u.id == session.user_id %}<small style="color:var(--pico-muted-color)">(you)</small>{% endif %}
+        </td>
         <td>
           <form action="{{ url_for('admin_user_role', user_id=u.id) }}" method="post" style="display:flex;gap:0.4rem;align-items:center;margin:0">
             <select name="role" style="font-size:0.85rem;padding:0.2rem;margin:0">
@@ -40,20 +48,33 @@
                 <option {% if u.role == r %}selected{% endif %}>{{ r }}</option>
               {% endfor %}
             </select>
-            <button type="submit" style="font-size:0.8rem;padding:0.2rem 0.5rem;margin:0" class="outline">Set</button>
+            <button type="submit" class="outline" style="font-size:0.78rem;padding:0.18rem 0.5rem;margin:0">Set</button>
           </form>
         </td>
-        <td style="font-size:0.85rem">{{ u.created_at[:10] }}</td>
+        <td style="font-size:0.85rem;white-space:nowrap">{{ u.created_at[:10] }}</td>
         <td>
-          {% if u.id != session.user_id %}
-          <form action="{{ url_for('admin_user_delete', user_id=u.id) }}" method="post" style="margin:0" onsubmit="return confirm('Delete user {{ u.username }}?')">
-            <button type="submit" class="outline secondary" style="font-size:0.8rem;padding:0.2rem 0.6rem;color:#dc3545;border-color:#dc3545">Delete</button>
-          </form>
-          {% endif %}
+          <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+            {% if u.id != session.user_id %}
+            <form action="{{ url_for('admin_user_reset_password', user_id=u.id) }}" method="post" style="margin:0"
+                  onsubmit="return confirm('Reset password for {{ u.username }} to changeme123?')">
+              <button type="submit" class="outline secondary" style="font-size:0.78rem;padding:0.18rem 0.55rem;color:#856404;border-color:#ffc107">🔑 Reset PW</button>
+            </form>
+            <form action="{{ url_for('admin_user_delete', user_id=u.id) }}" method="post" style="margin:0"
+                  onsubmit="return confirm('Permanently delete user {{ u.username }}?')">
+              <button type="submit" class="outline secondary" style="font-size:0.78rem;padding:0.18rem 0.55rem;color:#dc3545;border-color:#dc3545">🗑️ Delete</button>
+            </form>
+            {% else %}
+            <span style="font-size:0.78rem;color:var(--pico-muted-color);padding:0.18rem 0">Cannot modify your own account here</span>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+<div style="margin-top:1.5rem;padding:0.8rem 1rem;background:var(--pico-primary-background);border-radius:8px;border:1px solid var(--pico-primary-border);font-size:0.85rem">
+  <strong>🔑 Password Reset</strong> sets the user's password to <code>changeme123</code>. Tell them to change it via their Profile page after logging in.
 </div>
 {% endblock %}

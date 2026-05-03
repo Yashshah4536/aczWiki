@@ -1,0 +1,35 @@
+Please do the following final additions to the AczWiki project:
+1. Create a README.md file in the project root with the following sections:
+
+Project name and a one-line description
+Features list (all 8 features that are implemented)
+Requirements (Python 3.8+, pip)
+How to install and run locally on Windows:
+
+git clone the repo
+pip install -r requirements.txt
+python app.py
+Open http://localhost:5000
+Default login: admin / admin123
+
+
+How to run on LAN so others can access it:
+
+Run ipconfig on Windows to find your IPv4 address
+Share http://<your-ip>:5000 with teammates
+They open it in any browser — no installation needed on their side
+
+
+How to make it auto-start on Windows boot (create a .bat file and add it to Windows Startup folder)
+Folder structure explanation (app.py, database.py, templates/, uploads/)
+How to back up data (just copy the .db file and uploads/ folder)
+User roles explanation: Admin, Editor, Viewer
+
+2. Create a start_server.bat file in the project root:
+It should activate the Python environment if a venv folder exists, otherwise just run python app.py. It should also print "AczWiki is running — open http://<ip>:5000 in your browser" using ipconfig to auto-detect the IP. This file is what the RnD team will double-click to start the server on the company PC.
+3. Create a backup.bat file:
+It should copy wiki.db and the uploads/ folder into a backups/ folder with today's date as the folder name (e.g. backups/2026-05-03/). This can be run manually or scheduled via Windows Task Scheduler.
+4. Add a /admin/users page (Admin only):
+Admins can: see all users, change any user's role (Admin / Editor / Viewer), reset any user's password to a default changeme123, and delete users (except themselves). Also add a "Create new user" form on this page with fields: username, password, role. This removes the need to manually insert users into the database.
+5. Add a user profile page /profile:
+Any logged-in user can: change their own password, see their own article count, snippet count, and timesheet summary (total days logged this month).
