@@ -106,7 +106,7 @@
       {% if session.role == 'Admin' %}
         <a href="{{ url_for('admin_users') }}" role="button" class="outline secondary">Users</a>
       {% endif %}
-      <span style="font-size:0.85rem">{{ session.username }} <small>({{ session.role }})</small></span>
+      <a href="{{ url_for('profile') }}" style="font-size:0.85rem;text-decoration:none">{{ session.username }} <small>({{ session.role }})</small></a>
       <a href="{{ url_for('logout') }}" role="button" class="secondary outline">Logout</a>
       <button id="theme-toggle" class="outline secondary" title="Toggle dark mode" style="padding:0.3rem 0.6rem;">🌙</button>
     </div>

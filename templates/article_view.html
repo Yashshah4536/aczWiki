@@ -13,6 +13,7 @@
     {% if session.role in ('Admin','Editor') %}
       <a href="{{ url_for('article_edit', article_id=article.id) }}" role="button" class="outline">✏️ Edit</a>
     {% endif %}
+    <button id="copy-link-btn" class="outline secondary" onclick="copyArticleLink()" title="Copy link to this article">🔗 Copy Link</button>
     <a href="{{ url_for('article_history', article_id=article.id) }}" role="button" class="outline secondary">🕓 History</a>
     <a href="{{ url_for('article_pdf', article_id=article.id) }}" role="button" class="outline secondary">📄 PDF</a>
     {% if session.role == 'Admin' %}
@@ -36,6 +37,15 @@
 
 <div class="article-body">
   {{ article.body|safe }}
+</div>
+
+<!-- Last edited footer -->
+<div style="margin-top:2rem;padding-top:1rem;border-top:1px solid var(--pico-muted-border-color);font-size:0.85rem;color:var(--pico-muted-color)">
+  {% if article.updater %}
+    Last edited by <strong>{{ article.updater }}</strong> on {{ article.updated_at[:10] }}
+  {% else %}
+    Created by <strong>{{ article.author }}</strong> on {{ article.created_at[:10] }}
+  {% endif %}
 </div>
 
 <!-- Attachments -->
@@ -90,4 +100,18 @@
     <button type="submit">Post Comment</button>
   </form>
 </section>
+{% endblock %}
+{% block scripts %}
+<script>
+function copyArticleLink() {
+  const btn = document.getElementById('copy-link-btn');
+  navigator.clipboard.writeText(window.location.href).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✅ Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  }).catch(() => {
+    prompt('Copy this link:', window.location.href);
+  });
+}
+</script>
 {% endblock %}

@@ -553,6 +553,40 @@ def admin_user_role(user_id):
     return redirect(url_for('admin_users'))
 
 
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    conn = get_db()
+    if request.method == 'POST':
+        current_pw = request.form.get('current_password', '')
+        new_pw = request.form.get('new_password', '')
+        confirm_pw = request.form.get('confirm_password', '')
+        user = conn.execute("SELECT * FROM users WHERE id=?", (session['user_id'],)).fetchone()
+        if not check_password_hash(user['password_hash'], current_pw):
+            flash('Current password is incorrect.', 'error')
+        elif len(new_pw) < 6:
+            flash('New password must be at least 6 characters.', 'error')
+        elif new_pw != confirm_pw:
+            flash('New passwords do not match.', 'error')
+        else:
+            conn.execute("UPDATE users SET password_hash=? WHERE id=?",
+                         (generate_password_hash(new_pw), session['user_id']))
+            conn.commit()
+            flash('Password changed successfully.', 'success')
+        conn.close()
+        return redirect(url_for('profile'))
+    user = conn.execute("SELECT * FROM users WHERE id=?", (session['user_id'],)).fetchone()
+    article_count = conn.execute("SELECT COUNT(*) FROM articles WHERE created_by=?", (session['user_id'],)).fetchone()[0]
+    comment_count = conn.execute("SELECT COUNT(*) FROM comments WHERE user_id=?", (session['user_id'],)).fetchone()[0]
+    folders = get_folders_tree(conn)
+    tags = get_all_tags(conn)
+    conn.close()
+    return render_template('profile.html', user=user, article_count=article_count,
+                           comment_count=comment_count, folders=folders, tags=tags)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
@@ -561,15 +595,22 @@ if __name__ == '__main__':
     create_default_admin()
 
     try:
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        local_ip = s.getsockname()[0]
+        s.close()
     except Exception:
-        local_ip = '127.0.0.1'
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            local_ip = '127.0.0.1'
 
     print(f"\n{'='*50}")
-    print(f"  Knowledge Base running!")
+    print(f"  AczWiki is running!")
     print(f"  Local:   http://localhost:5000")
     print(f"  Network: http://{local_ip}:5000")
+    print(f"  Share this address with others on the LAN:")
+    print(f"  --> http://{local_ip}:5000")
     print(f"{'='*50}\n")
 
     app.run(host='0.0.0.0', port=5000, debug=True)

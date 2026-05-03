@@ -1,7 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Home — Knowledge Base{% endblock %}
+{% block title %}Home — AczWiki{% endblock %}
 {% block content %}
-<h2>Home</h2>
+
+<div style="background:linear-gradient(135deg,var(--pico-primary-background) 0%,var(--pico-background-color) 100%);border:1px solid var(--pico-primary-border);border-radius:12px;padding:2rem 2.5rem;margin-bottom:2rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+  <div>
+    <h1 style="margin:0 0 0.4rem;font-size:1.8rem">👋 Welcome to AczWiki</h1>
+    <p style="margin:0;color:var(--pico-muted-color);max-width:520px">Your team's internal knowledge base. Create, organize, and share articles, documents, and guides — all in one place, accessible on your local network.</p>
+  </div>
+  {% if session.role in ('Admin','Editor') %}
+  <a href="{{ url_for('article_new') }}" role="button" style="white-space:nowrap;font-size:1rem;padding:0.7rem 1.4rem">✨ New Article</a>
+  {% endif %}
+</div>
 
 {% if pinned %}
 <section>
